@@ -8,7 +8,7 @@ test("sum from native", (t) => {
 
 import { AouServer } from "../index.js";
 
-test("initialize server", (t) => {
+test("initialize server", async (t) => {
   const server = new AouServer();
 
   t.truthy(server);
@@ -21,9 +21,14 @@ test("initialize server", (t) => {
   console.log("hello world");
   t.false(server.isRunning());
 
-  server.get("/", () => {
-    console.log("Hello World from server");
+  let counter = 0;
+  server.get("/", (...funny) => {
+    console.info("Args,", funny);
+    console.log("Hello World from server ", counter);
+    counter++;
   });
 
-  server.fakeListen();
+  await server.fakeListen();
+
+  // server.listen("127.0.0.1", 8080);
 });

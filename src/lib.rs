@@ -1,4 +1,5 @@
 #[macro_use]
+#[allow(clippy::all)]
 extern crate napi_derive;
 
 pub mod request;

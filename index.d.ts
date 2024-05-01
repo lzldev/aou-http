@@ -13,4 +13,5 @@ export class AouServer {
   get(route: string, handler: (...args: any[]) => any): void
   post(route: string, handler: (...args: any[]) => any): void
   fakeListen(): Promise<void>
+  listen(host: string, port: number): Promise<void>
 }

@@ -4,18 +4,17 @@ use std::{collections::HashMap, net::SocketAddrV4};
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
-use napi::threadsafe_function::ThreadsafeFunctionCallMode;
-use napi::CallContext;
 use napi::JsFunction;
-use napi::JsUndefined;
 use tokio::{net::TcpListener, sync::oneshot};
 
 #[napi]
 pub struct AouServer {
   options: AouOptions,
-  handlers: HashMap<String, (Method, ThreadsafeFunction<(), ErrorStrategy::CalleeHandled>)>,
+  handlers: HashMap<String, (Method, Handler)>,
   sender: Option<oneshot::Sender<()>>,
 }
+
+type Handler = ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled>;
 
 #[napi]
 impl AouServer {
@@ -35,9 +34,9 @@ impl AouServer {
     self.sender.is_some()
   }
 
-  fn make_handler_safe(func: JsFunction) -> ThreadsafeFunction<(), ErrorStrategy::CalleeHandled> {
+  fn make_handler_safe(func: JsFunction) -> Handler {
     func
-      .create_threadsafe_function(0, |_| Ok(vec![()]))
+      .create_threadsafe_function(0, |_| Ok(vec![32, 32, 32]))
       .expect("Couldn't Register Handler")
   }
 
@@ -67,41 +66,42 @@ impl AouServer {
 
     eprintln!("will this print");
     let start = Instant::now();
-    let _: Result<(), _> = function.call_async(Ok(())).await;
-    eprintln!("End: {:?}", start.elapsed());
+    let _: Result<(), _> = function.call_async(Ok(32)).await;
+    println!("End: {:?}", start.elapsed());
 
     ()
   }
 
-  // pub async fn listen(&self, host: String, port: usize) {
-  //   let addr = format!("{host}:{port}");
+  #[napi]
+  pub async fn listen(&self, host: String, port: u32) {
+    let addr = format!("{host}:{port}");
 
-  //   let (sender, receiver) = oneshot::channel::<()>();
+    let (sender, receiver) = oneshot::channel::<()>();
 
-  //   let listener = TcpListener::bind(
-  //     addr
-  //       .as_str()
-  //       .parse::<SocketAddrV4>()
-  //       .expect("Invalid Server Address"),
-  //   )
-  //   .await
-  //   .expect("Couldn't establish tcp connection");
+    let listener = TcpListener::bind(
+      addr
+        .as_str()
+        .parse::<SocketAddrV4>()
+        .expect("Invalid Server Address"),
+    )
+    .await
+    .expect("Couldn't establish tcp connection");
 
-  //   tokio::spawn(async move {
-  //     let mut receiver = receiver;
+    tokio::spawn(async move {
+      let mut receiver = receiver;
 
-  //     loop {
-  //       tokio::select! {
-  //         Ok((socket,addr)) = listener.accept() => {
+      loop {
+        tokio::select! {
+          Ok((socket,addr)) = listener.accept() => {
 
-  //         }
-  //           _ = &mut receiver =>{
-  //             println!("Server killed");
-  //           }
-  //       }
-  //     }
-  //   });
-  // }
+          }
+          v = (&mut receiver) =>{
+            println!("Server killed {:?}",v);
+          }
+        }
+      }
+    });
+  }
 }
 
 #[napi(object)]
