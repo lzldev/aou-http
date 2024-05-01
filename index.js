@@ -310,6 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { sum } = nativeBinding
+const { AouServer, sum } = nativeBinding
 
+module.exports.AouServer = AouServer
 module.exports.sum = sum
