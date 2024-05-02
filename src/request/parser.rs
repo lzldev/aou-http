@@ -1,70 +1,27 @@
 use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 
+use super::{Request, RequestHead, RequestHeaders};
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Request<'req> {
+pub struct RequestParser<'req> {
   pub buf: &'req [u8],
   pub head: RequestHead<'req>,
   pub headers: RequestHeaders<'req>,
   pub body: &'req [u8],
 }
 
-type RequestHeaders<'req> = Vec<(&'req [u8], &'req [u8])>; // Probably should be a hashmap already?
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RequestHead<'req> {
-  pub method: &'req [u8],
-  pub path: &'req [u8],
-  pub http_version: &'req [u8],
-}
+impl<'req> RequestParser<'req> {
+  pub fn into_request(self) -> Request<'req> {
+    Request {
+      buf: self.buf.to_owned(),
+      body: self.body,
+      head: self.head,
+      headers: self.headers,
+    }
+  }
 
-impl<'req> Request<'req> {
-  // pub fn parse_request_with_vec(buf: &[u8]) -> Request {
-  //   let mut offset: usize = 0;
-  //   let mut lines = buf.split(|b| b == &b'\n');
-
-  //   let head = lines.next().context("")?;
-  //   offset = offset + head.len() + 1;
-
-  //   let mut head_split = head.split(|b| b == &b' ');
-
-  //   let (method, path, http_version) = (
-  //     head_split.next().unwrap(),
-  //     head_split.next().unwrap(),
-  //     head_split.next().unwrap(),
-  //   );
-
-  //   let mut headers: RequestHeaders = Vec::new();
-
-  //   for line in lines.by_ref() {
-  //     offset = line.len() + 1;
-  //     if line == b"" {
-  //       break;
-  //     }
-
-  //     let mut split = line.split(|b| b == &b':');
-
-  //     let (header, value) = (split.next().unwrap(), split.next().unwrap());
-  //     headers.push((header, value));
-  //   }
-
-  //   assert!(offset <= buf.len(), "body offset bigger than buf length");
-  //   let body = &buf[..offset];
-
-  //   let head = RequestHead {
-  //     method,
-  //     path,
-  //     http_version,
-  //   };
-
-  //   Request {
-  //     buf,
-  //     head,
-  //     headers,
-  //     body,
-  //   }
-  // }
-
-  pub fn parse_request(buf: &mut [u8]) -> Result<Request, anyhow::Error> {
+  pub fn parse_request(buf: &mut [u8]) -> Result<RequestParser, anyhow::Error> {
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
 
@@ -85,8 +42,9 @@ impl<'req> Request<'req> {
 
     assert_eq!(http_version, b"HTTP/1.1\r");
 
+    //TODO:Using a vec here might be faster (The streets said)
     let headers = lines
-      .take_while(|b| *b != b"" && *b != b"\r") //TODO: Handle the \r correctly
+      .take_while(|b| *b != b"" && *b != b"\r") //TODO: Trim the \r correctly , And empty lines
       .filter_map(|header| {
         offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
 
@@ -123,7 +81,7 @@ impl<'req> Request<'req> {
       http_version,
     };
 
-    let req = Request {
+    let req = RequestParser {
       buf,
       head,
       headers,
@@ -138,7 +96,7 @@ impl<'req> Request<'req> {
 mod test {
   use tokio::time::Instant;
 
-  use crate::request::Request;
+  use crate::request::RequestParser;
 
   const GET_REQUEST_MOCK: &[u8] = b"GET / HTTP/1.1
 Host: www.example.com
@@ -148,7 +106,8 @@ Accept-Language: en
 
   #[tokio::test]
   async fn test_parse_request() {
-    let req = Request::parse_request(GET_REQUEST_MOCK).unwrap();
+    let mut mutable_mock = GET_REQUEST_MOCK.to_owned();
+    let req = RequestParser::parse_request(&mut mutable_mock).unwrap();
 
     let size_buf = std::mem::size_of_val(GET_REQUEST_MOCK);
     let size_u8 = std::mem::size_of_val(&255u8);
@@ -184,7 +143,8 @@ Content-Type: application/json
 }";
   #[tokio::test]
   async fn test_parse_request_with_body() {
-    let req = Request::parse_request(&mut POST_REQUEST_MOCK).unwrap();
+    let mut mutable_mock = POST_REQUEST_MOCK.to_owned();
+    let req = RequestParser::parse_request(&mut mutable_mock).unwrap();
 
     let size_buf = std::mem::size_of_val(POST_REQUEST_MOCK);
     let size_u8 = std::mem::size_of_val(&255u8);
@@ -223,11 +183,12 @@ Content-Type: application/json
 
   #[tokio::test]
   async fn bench_parse_request() {
+    let mut mutable_mock = POST_REQUEST_MOCK.to_owned();
     let size = 20_000_000;
 
     let start = Instant::now();
     for _ in 0..size {
-      let _ = Request::parse_request(&mut POST_REQUEST_MOCK);
+      let _ = RequestParser::parse_request(&mut mutable_mock);
     }
     eprintln!("ITER TOOK: {:?}", start.elapsed());
 

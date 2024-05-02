@@ -4,7 +4,7 @@ use std::time::Duration;
 
 mod request;
 
-use request::Request;
+use request::{Request, RequestParser};
 use tokio::time::Instant;
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
@@ -38,7 +38,7 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
 
   let mut buf = Vec::new();
 
-  let mut _req: Option<Request> = {
+  let mut _req: Option<RequestParser> = {
     //TODO:Remove into Parse_frame
     loop {
       let buf_len = buf.len();
@@ -57,7 +57,7 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
         break None;
       }
       if buf_len > 0 {
-        if let Ok(req) = Request::parse_request(&mut buf) {
+        if let Ok(req) = RequestParser::parse_request(&mut buf) {
           break Some(req);
         }
 
@@ -68,7 +68,15 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
     }
   };
 
-  let _req = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
+  let old = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
+  let mut _req = old.into_request();
+
+  let f = _req.buf.get_mut(0).unwrap();
+  *f = b'R';
+  drop(f);
+
+  dbg!(String::from_utf8_lossy(&_req.buf[..10]));
+  dbg!(String::from_utf8_lossy(&_req.head.method));
 
   let body_buf = format!("\nHello World\n{:#?}", Instant::now());
   let body_length = body_buf.len();
