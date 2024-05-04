@@ -8,18 +8,11 @@ test("sum from native", (t) => {
 
 import { AouServer } from "../index.js";
 
-test("initialize server", async (t) => {
+test("initialize server", async (test) => {
   const server = new AouServer();
 
-  t.truthy(server);
-
-  console.log(server.isRunning());
-
-  console.log("hello world");
-  console.log("hello world");
-  console.log("hello world");
-  console.log("hello world");
-  t.false(server.isRunning());
+  test.truthy(server);
+  test.false(server.isRunning());
 
   let counter = 0;
   server.get("/", (...funny) => {

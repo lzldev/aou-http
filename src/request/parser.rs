@@ -1,85 +1,80 @@
-use anyhow::{anyhow, Context};
-use serde::{Deserialize, Serialize};
+use crate::{request::RequestHeaderParser, utils::range_from_subslice};
 
-use super::{Request, RequestHead, RequestHeaders};
+use super::{RequestHead, RequestHeaders, VecOffset};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RequestParser<'req> {
-  pub buf: &'req [u8],
-  pub head: RequestHead<'req>,
-  pub headers: RequestHeaders<'req>,
-  pub body: &'req [u8],
+pub enum ParseResponse {
+  Success(RequestParser),
+  Incomplete((Vec<u8>, ParserState)),
 }
 
-impl<'req> RequestParser<'req> {
-  pub fn into_request(self) -> Request<'req> {
-    Request {
-      buf: self.buf.to_owned(),
-      body: self.body,
-      head: self.head,
-      headers: self.headers,
-    }
-  }
+#[derive(Debug)]
+pub struct RequestParser {
+  buf: Vec<u8>,
+  head: RequestHead,
+  headers: RequestHeaders,
+  body: VecOffset,
+}
 
-  pub fn parse_request(buf: &mut [u8]) -> Result<RequestParser, anyhow::Error> {
+#[derive(Debug)]
+pub enum ParserState {
+  New,
+  Head {
+    cursor: usize,
+    head: RequestHead,
+  },
+  Headers {
+    cursor: usize,
+    head: RequestHead,
+    headers: RequestHeaders,
+  },
+  Body {
+    cursor: usize,
+    head: RequestHead,
+    headers: RequestHeaders,
+    body: VecOffset,
+  },
+}
+
+impl RequestParser {
+  pub fn parse_request(buf: Vec<u8>, state: ParserState) -> ParseResponse {
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
 
-    let (method, path, http_version) = {
-      let head = lines.next().context("Head not found?")?;
-      offset = offset.wrapping_add(head.len() + 1); // Add size of Head + \n to offset
-      let mut head_split = head.split(|b| b == &b' ');
+    let head = match RequestHead::from_split_iter(&mut lines, &buf) {
+      Ok((size, head)) => {
+        offset = offset + size;
+        head
+      }
+      Err(_) => return ParseResponse::Incomplete((buf, ParserState::New)),
+    };
 
-      let method = head_split.next().ok_or(anyhow!("Method not found"))?;
-      let path = head_split.next().ok_or(anyhow!("Path not found Path"))?;
-      let http_version = head_split.next().ok_or(anyhow!("Http Version not found"))?;
-
-      assert_eq!(method[0], buf[0], "Method[0] and buf[0] not equal");
-      assert_eq!(method[0], buf[0], "Method[0] and buf[0] not equal");
-
-      Ok::<_, anyhow::Error>((method, path, http_version))
-    }?;
-
-    assert_eq!(http_version, b"HTTP/1.1\r");
-
-    //TODO:Using a vec here might be faster (The streets said)
-    let headers = lines
-      .take_while(|b| *b != b"" && *b != b"\r") //TODO: Trim the \r correctly , And empty lines
-      .filter_map(|header| {
-        offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
-
-        let mut split = header.split(|b| b == &b':');
-
-        let (header, value) = (split.next()?, split.next()?);
-
-        Some((header, value))
-      })
-      .collect::<Vec<_>>();
+    let headers = match RequestHeaderParser::parse_headers(&buf, lines) {
+      Ok((size, headers)) => {
+        offset = offset + size;
+        headers
+      }
+      Err(_) => {
+        return ParseResponse::Incomplete((
+          buf,
+          ParserState::Head {
+            cursor: offset,
+            head,
+          },
+        ))
+      }
+    };
 
     let buf_len = buf.len();
-    // if offset < buf_len - 1 {
-    // Check if the stream ends here
-    //   offset = offset.wrapping_add(1)
-    // }; // Skip the empty line between Headers and body + \n
 
-    if offset >= buf_len {
-      return Err(anyhow!("Offset Larger than buffer size."));
-    }
-
-    assert!(
+    debug_assert!(
       offset <= buf_len,
       "Buf:{:#?}\nOffset larger than buffer size : Offset {offset} : Buf {buf_len} Headers:{}",
-      String::from_utf8_lossy(buf),
+      String::from_utf8_lossy(buf.as_slice()),
       headers.len()
     );
 
     let body = &buf[offset..];
-
-    let head = RequestHead {
-      method,
-      path,
-      http_version,
-    };
+    let body = range_from_subslice(&buf, body);
 
     let req = RequestParser {
       buf,
@@ -88,7 +83,7 @@ impl<'req> RequestParser<'req> {
       body,
     };
 
-    Ok(req)
+    ParseResponse::Success(req)
   }
 }
 
@@ -96,7 +91,7 @@ impl<'req> RequestParser<'req> {
 mod test {
   use tokio::time::Instant;
 
-  use crate::request::RequestParser;
+  use crate::request::{ParseResponse, RequestParser};
 
   const GET_REQUEST_MOCK: &[u8] = b"GET / HTTP/1.1
 Host: www.example.com
@@ -104,15 +99,11 @@ Accept-Language: en
 
 ";
 
-  #[tokio::test]
-  async fn test_parse_request() {
-    let mut mutable_mock = GET_REQUEST_MOCK.to_owned();
-    let req = RequestParser::parse_request(&mut mutable_mock).unwrap();
-
-    let size_buf = std::mem::size_of_val(GET_REQUEST_MOCK);
+  fn print_parser_memory(req: RequestParser) {
+    let size_buf = std::mem::size_of_val(POST_REQUEST_MOCK);
     let size_u8 = std::mem::size_of_val(&255u8);
     let size = std::mem::size_of_val(&req);
-    let size_req_buf = std::mem::size_of_val(req.buf);
+    let size_req_buf = std::mem::size_of_val(&req.buf);
     let size_headers = std::mem::size_of_val(&req.headers);
     let size_head = std::mem::size_of_val(&req.head);
     let size_body = std::mem::size_of_val(req.body);
@@ -127,10 +118,19 @@ Accept-Language: en
     eprintln!("  Head: {size_head:#?}");
     eprintln!("  Headers: {size_headers:#?}");
     eprintln!("  Body: {size_body:#?}");
-    eprintln!(
-      "    TOTAL: {:#?}",
-      size_req_buf + size_head + size_headers + size_body
-    )
+    eprintln!("    TOTAL: {:#?}", size_head + size_headers + size_body);
+  }
+
+  #[tokio::test]
+  async fn test_parse_request() {
+    let mut mutable_mock = GET_REQUEST_MOCK.to_owned();
+
+    let req = match RequestParser::parse_request(mutable_mock) {
+      ParseResponse::Success(r) => r,
+      ParseResponse::Failed(_) => panic!("Parse Failed"),
+    };
+
+    print_parser_memory(req);
   }
 
   const POST_REQUEST_MOCK: &[u8] = b"POST /create HTTP/1.1

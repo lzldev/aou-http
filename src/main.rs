@@ -4,7 +4,7 @@ use std::time::Duration;
 
 mod request;
 
-use request::{Request, RequestParser};
+use request::RequestParser;
 use tokio::time::Instant;
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
@@ -36,14 +36,15 @@ async fn main() -> Result<(), anyhow::Error> {
 async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::Error> {
   let (mut stream, _) = socket;
 
-  let mut buf = Vec::new();
+  let mut buf = Some(Vec::new());
 
   let mut _req: Option<RequestParser> = {
     //TODO:Remove into Parse_frame
     loop {
-      let buf_len = buf.len();
+      let mut taken = buf.take().expect("Taken None Buf");
+      let buf_len = taken.len();
       let n = tokio::select! {
-        n = stream.read_buf(&mut buf) => {
+        n = stream.read_buf(&mut taken) => {
           if let Err(n) = n {
             return Err(n.into());
           }
@@ -56,14 +57,17 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
       if buf_len == 0 && n == 0 {
         break None;
       }
-      if buf_len > 0 {
-        if let Ok(req) = RequestParser::parse_request(&mut buf) {
-          break Some(req);
-        }
 
-        if n == 0 {
-          break None;
-        }
+      if buf_len > 0 {
+        match RequestParser::parse_request(taken) {
+          request::ParseResponse::Success(req) => break Some(req),
+          request::ParseResponse::Failed(b) => {
+            buf = Some(b);
+            if n == 0 {
+              break None;
+            }
+          }
+        };
       }
     }
   };
