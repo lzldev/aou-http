@@ -1,16 +1,14 @@
-use crate::{request::RequestHeaderParser, utils::range_from_subslice};
+use crate::{
+  request::{HeaderParseError, RequestHeaderParser},
+  utils::range_from_subslice,
+};
+use anyhow::anyhow;
 
 use super::{RequestHead, RequestHeaders, VecOffset};
 
 #[derive(Debug)]
-pub enum ParseResponse {
-  Success(RequestParser),
-  Incomplete((Vec<u8>, ParserState)),
-}
-
-#[derive(Debug)]
 pub struct RequestParser {
-  buf: Vec<u8>,
+  pub buf: Vec<u8>,
   head: RequestHead,
   headers: RequestHeaders,
   body: VecOffset,
@@ -18,27 +16,53 @@ pub struct RequestParser {
 
 #[derive(Debug)]
 pub enum ParserState {
-  New,
+  Start {
+    read_until: Option<usize>,
+  },
   Head {
     cursor: usize,
+    read_until: usize,
     head: RequestHead,
   },
   Headers {
     cursor: usize,
+    read_until: usize,
     head: RequestHead,
     headers: RequestHeaders,
   },
   Body {
     cursor: usize,
+    read_until: usize,
     head: RequestHead,
     headers: RequestHeaders,
     body: VecOffset,
   },
 }
 
+impl ParserState {
+  pub fn read_until(&self) -> usize {
+    match self {
+      ParserState::Start { read_until } => read_until.unwrap_or(0),
+      ParserState::Head { read_until, .. } => *read_until,
+      ParserState::Headers { read_until, .. } => *read_until,
+      ParserState::Body { read_until, .. } => *read_until,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum RequestParseResponse {
+  Success(RequestParser),
+  Incomplete((Vec<u8>, ParserState)),
+}
+
 impl RequestParser {
   #[tracing::instrument(skip_all)]
-  pub fn parse_request(buf: Vec<u8>, state: ParserState) -> Result<ParseResponse, anyhow::Error> {
+  pub fn parse_request(
+    buf: Vec<u8>,
+    state: ParserState,
+  ) -> Result<RequestParseResponse, anyhow::Error> {
+    let buf_len = buf.len();
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
 
@@ -48,7 +72,12 @@ impl RequestParser {
         head
       }
       Err(head_parse_error) => {
-        return Ok(ParseResponse::Incomplete((buf, ParserState::New)));
+        return Ok(RequestParseResponse::Incomplete((
+          buf,
+          ParserState::Start {
+            read_until: Some(buf_len),
+          },
+        )));
       }
     };
 
@@ -57,15 +86,17 @@ impl RequestParser {
         offset = offset + size;
         headers
       }
-      Err(_) => {
-        return Ok(ParseResponse::Incomplete((
+      Err(HeaderParseError::Incomplete) => {
+        return Ok(RequestParseResponse::Incomplete((
           buf,
           ParserState::Head {
             cursor: offset,
+            read_until: buf_len,
             head,
           },
         )))
       }
+      Err(HeaderParseError::Invalid) => return Err(anyhow!("Invalid Headers")),
     };
 
     let buf_len = buf.len();
@@ -87,6 +118,6 @@ impl RequestParser {
       body,
     };
 
-    Ok(ParseResponse::Success(req))
+    Ok(RequestParseResponse::Success(req))
   }
 }

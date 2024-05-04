@@ -67,11 +67,12 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
 
   let mut _req: Option<RequestParser> = {
     let mut buf = Some(Vec::new());
-    let mut state = ParserState::New;
+    let mut state = ParserState::Start { read_until: None };
 
     //TODO:Remove into Parse_frame
     loop {
       let mut taken = buf.take().expect("Taken None Buf");
+      let prev_until = state.read_until().to_owned();
       let n = stream.read_buf(&mut taken).await?;
 
       let buf_len = taken.len();
@@ -83,22 +84,39 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
       if buf_len > 0 {
         match RequestParser::parse_request(taken, state) {
           Ok(res) => match res {
-            request::ParseResponse::Success(parser) => break Some(parser),
-            request::ParseResponse::Incomplete((b, new_state)) => {
+            request::RequestParseResponse::Success(parser) => break Some(parser),
+            request::RequestParseResponse::Incomplete((b, new_state)) => {
+              dbg!(String::from_utf8_lossy(&b), n);
               debug!("new State _ {:#?}", &new_state);
+
+              match new_state {
+                ParserState::Start { .. } => (),
+                ParserState::Head { read_until, .. }
+                | ParserState::Headers { read_until, .. }
+                | ParserState::Body { read_until, .. } => {
+                  if prev_until == read_until {
+                    error!("Parser returned incomplete twice at : {read_until}");
+                    break None;
+                  }
+                }
+              };
+
               buf = Some(b);
               state = new_state;
 
               if n == 0 {
                 debug!("Incomplete && n == 0 ");
+
                 unsafe {
                   debug!("{}", String::from_utf8_unchecked(buf.unwrap_unchecked()));
                 }
+
                 break None;
               }
             }
           },
           Err(parse_fatal) => {
+            dbg!(&parse_fatal);
             error!("parse_request {parse_fatal:#?}");
             break None;
           }
@@ -108,13 +126,7 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
   };
 
   let req = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
-  debug!("{req:?}");
-
-  // let mut _req = old.into_request();
-
-  // let f = _req.buf.get_mut(0).unwrap();
-  // *f = b'R';
-  // drop(f);
+  dbg!("{:}", String::from_utf8_lossy(&req.buf));
 
   let body_buf = format!("\nHello World\n{:#?}", Instant::now());
   let body_length = body_buf.len();
