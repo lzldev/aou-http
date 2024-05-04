@@ -17,8 +17,11 @@ napi = { version = "2.12.2", default-features = false, features = [
 napi-derive = "2.12.2"
 serde = { version = "1.0.199", features = ["derive"] }
 serde_json = { version = "1.0.116" }
+
 tracing = { version = "0.1" }
-tracing-subscriber = { version = "0.3" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+
 tokio = { version = "1.37.0", features = [
     "net",
     "macros",

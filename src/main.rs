@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use std::net::SocketAddr;
-use std::time::Duration;
+use tracing::{debug, error, info, info_span};
+use tracing_subscriber::EnvFilter;
 
 pub mod request;
 pub mod utils;
@@ -15,24 +16,49 @@ use request::{ParserState, RequestParser};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-  let subscriber = tracing_subscriber::FmtSubscriber::new();
-  let port = "127.0.0.1:7070".parse::<SocketAddr>().unwrap();
-  let socket = TcpListener::bind(port).await.expect("Couldn't bind server");
+  let subscriber = tracing_subscriber::fmt()
+    .compact()
+    .with_env_filter(EnvFilter::from_default_env())
+    .with_line_number(true)
+    .with_file(true)
+    .with_target(false)
+    .finish();
 
-  println!("Server Listening in : {port}");
+  tracing::subscriber::set_global_default(subscriber)
+    .expect("Couldn't register tracing default subscriber.");
+
+  let host = std::env::args()
+    .skip(1)
+    .next()
+    .unwrap_or("127.0.0.1:7070".into());
+
+  let addr = host.parse::<SocketAddr>().expect("Invalid Address");
+  let socket = TcpListener::bind(addr).await.expect("Couldn't bind server");
+  let mut req_n: usize = 0;
+
+  println!("Server Listening in : {addr}");
+
+  info!("Starting Server on port : {addr}");
+  debug!("TRUE");
 
   loop {
     let con = socket.accept().await.expect("Socket failed to accept");
 
     tokio::spawn(async move {
+      let span = info_span!("request");
+      let _lock = span.enter();
+
       let n = process_request(con).await;
 
-      if let Err(e) = n {
-        dbg!(e);
+      match n {
+        Ok(_) => info!("Ok : {req_n}"),
+        Err(err) => error!("Err : {req_n}\n{err:?}"),
       }
 
       ()
     });
+
+    req_n = req_n.wrapping_add(1);
   }
 }
 
@@ -59,22 +85,21 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
           Ok(res) => match res {
             request::ParseResponse::Success(parser) => break Some(parser),
             request::ParseResponse::Incomplete((b, new_state)) => {
-              // dbg!("new State _ ", &new_state);
+              debug!("new State _ {:#?}", &new_state);
               buf = Some(b);
               state = new_state;
 
               if n == 0 {
-                // dbg!("Incomplete && n == 0 ");
+                debug!("Incomplete && n == 0 ");
                 unsafe {
-                  // dbg!(String::from_utf8_unchecked(buf.unwrap_unchecked()));
+                  debug!("{}", String::from_utf8_unchecked(buf.unwrap_unchecked()));
                 }
                 break None;
               }
             }
           },
           Err(parse_fatal) => {
-            // dbg!("parse_request Err");
-            // dbg!(parse_fatal);
+            error!("parse_request {parse_fatal:#?}");
             break None;
           }
         };
@@ -82,17 +107,14 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
     }
   };
 
-  let parser = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
-  // dbg!(parser);
+  let req = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
+  debug!("{req:?}");
 
   // let mut _req = old.into_request();
 
   // let f = _req.buf.get_mut(0).unwrap();
   // *f = b'R';
   // drop(f);
-
-  // dbg!(String::from_utf8_lossy(&_req.buf[..10]));
-  // dbg!(String::from_utf8_lossy(&_req.head.method));
 
   let body_buf = format!("\nHello World\n{:#?}", Instant::now());
   let body_length = body_buf.len();

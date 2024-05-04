@@ -37,6 +37,7 @@ pub enum ParserState {
 }
 
 impl RequestParser {
+  #[tracing::instrument(skip_all)]
   pub fn parse_request(buf: Vec<u8>, state: ParserState) -> Result<ParseResponse, anyhow::Error> {
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
