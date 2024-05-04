@@ -1,7 +1,7 @@
 use crate::utils::range_from_subslice;
 use anyhow::anyhow;
 
-use super::VecOffset;
+use super::{RequestToken, VecOffset};
 
 pub type RequestHeaderVec = (VecOffset, VecOffset);
 pub type RequestHeaders = Vec<RequestHeaderVec>;
@@ -15,6 +15,7 @@ impl RequestHeaderParser {
   where
     P: FnMut(&u8) -> bool,
   {
+    let mut has_host = false;
     let mut offset: usize = 0;
 
     let headerLines = lines.take_while(|b| *b != b"" && *b != b"\r");
@@ -29,10 +30,32 @@ impl RequestHeaderParser {
         split.next().ok_or(anyhow!("Invalid Header Value"))?,
       );
 
+      unsafe {
+        if std::str::from_utf8_unchecked(header).eq_ignore_ascii_case("Host") {
+          has_host = true;
+        }
+      }
+
       let header = range_from_subslice(buf, header);
       let value = range_from_subslice(buf, value);
 
       headers_vec.push((header, value))
+    }
+
+    // dbg!(has_host);
+
+    if headers_vec.len() == 0 {
+      return Err(anyhow!("No Headers"));
+    } else if has_host == false {
+      return Err(anyhow!("Host header not found yet."));
+    }
+
+    //unwrap: headers_vec already checked.
+    let (_, last_key_token) = headers_vec.last().unwrap();
+    let last_char = &buf[(last_key_token.1) - 1..last_key_token.1];
+    if last_char != b"\r" {
+      // dbg!(&last_char);
+      return Err(anyhow!("Last Header was invalid."));
     }
 
     // let headers = lines

@@ -38,7 +38,6 @@ pub enum ParserState {
 
 impl RequestParser {
   pub fn parse_request(buf: Vec<u8>, state: ParserState) -> Result<ParseResponse, anyhow::Error> {
-    dbg!(String::from_utf8_lossy(&buf));
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
 
@@ -48,8 +47,6 @@ impl RequestParser {
         head
       }
       Err(head_parse_error) => {
-        dbg!(head_parse_error);
-
         return Ok(ParseResponse::Incomplete((buf, ParserState::New)));
       }
     };

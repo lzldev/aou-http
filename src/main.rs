@@ -15,6 +15,7 @@ use request::{ParserState, RequestParser};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+  let subscriber = tracing_subscriber::FmtSubscriber::new();
   let port = "127.0.0.1:7070".parse::<SocketAddr>().unwrap();
   let socket = TcpListener::bind(port).await.expect("Couldn't bind server");
 
@@ -45,16 +46,8 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
     //TODO:Remove into Parse_frame
     loop {
       let mut taken = buf.take().expect("Taken None Buf");
-      let n = tokio::select! {
-        n = stream.read_buf(&mut taken) => {
-          if let Err(n) = n {
-            return Err(n.into());
-          }
+      let n = stream.read_buf(&mut taken).await?;
 
-          n.unwrap()
-        },
-        // _ = tokio::time::sleep(Duration::from_millis(10)) => return Err(anyhow!("Timedout"))
-      };
       let buf_len = taken.len();
 
       if buf_len == 0 && n == 0 {
@@ -66,16 +59,22 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
           Ok(res) => match res {
             request::ParseResponse::Success(parser) => break Some(parser),
             request::ParseResponse::Incomplete((b, new_state)) => {
-              dbg!("new State _ ", &new_state);
+              // dbg!("new State _ ", &new_state);
               buf = Some(b);
               state = new_state;
 
               if n == 0 {
+                // dbg!("Incomplete && n == 0 ");
+                unsafe {
+                  // dbg!(String::from_utf8_unchecked(buf.unwrap_unchecked()));
+                }
                 break None;
               }
             }
           },
-          Err(_) => {
+          Err(parse_fatal) => {
+            // dbg!("parse_request Err");
+            // dbg!(parse_fatal);
             break None;
           }
         };
@@ -84,7 +83,7 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
   };
 
   let parser = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
-  dbg!(parser);
+  // dbg!(parser);
 
   // let mut _req = old.into_request();
 
