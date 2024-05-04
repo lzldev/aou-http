@@ -2,6 +2,7 @@ use crate::{request::RequestHeaderParser, utils::range_from_subslice};
 
 use super::{RequestHead, RequestHeaders, VecOffset};
 
+#[derive(Debug)]
 pub enum ParseResponse {
   Success(RequestParser),
   Incomplete((Vec<u8>, ParserState)),
@@ -36,7 +37,8 @@ pub enum ParserState {
 }
 
 impl RequestParser {
-  pub fn parse_request(buf: Vec<u8>, state: ParserState) -> ParseResponse {
+  pub fn parse_request(buf: Vec<u8>, state: ParserState) -> Result<ParseResponse, anyhow::Error> {
+    dbg!(String::from_utf8_lossy(&buf));
     let mut offset: usize = 0;
     let mut lines = buf.split(|b| b == &b'\n');
 
@@ -45,7 +47,11 @@ impl RequestParser {
         offset = offset + size;
         head
       }
-      Err(_) => return ParseResponse::Incomplete((buf, ParserState::New)),
+      Err(head_parse_error) => {
+        dbg!(head_parse_error);
+
+        return Ok(ParseResponse::Incomplete((buf, ParserState::New)));
+      }
     };
 
     let headers = match RequestHeaderParser::parse_headers(&buf, lines) {
@@ -54,13 +60,13 @@ impl RequestParser {
         headers
       }
       Err(_) => {
-        return ParseResponse::Incomplete((
+        return Ok(ParseResponse::Incomplete((
           buf,
           ParserState::Head {
             cursor: offset,
             head,
           },
-        ))
+        )))
       }
     };
 
@@ -83,7 +89,7 @@ impl RequestParser {
       body,
     };
 
-    ParseResponse::Success(req)
+    Ok(ParseResponse::Success(req))
   }
 }
 

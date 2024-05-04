@@ -1,7 +1,10 @@
 [package]
-name = "aou"
+name = "aou_rs"
 edition = "2021"
-version = "0.0.0"
+version = "0.1.0"
+
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.82"

@@ -1,7 +1,6 @@
 use super::{RequestHead, RequestHeaders, VecOffset};
 use napi_derive::napi;
 
-#[napi]
 #[derive(Debug, Default)]
 pub struct Request {
   buf: Vec<u8>,
@@ -10,7 +9,6 @@ pub struct Request {
   body: VecOffset,
 }
 
-#[napi]
 impl Request {
   pub fn new(buf: Vec<u8>, head: RequestHead, headers: RequestHeaders, body: VecOffset) -> Request {
     Request {
@@ -21,7 +19,6 @@ impl Request {
     }
   }
 
-  #[napi]
   pub fn path(&self) -> String {
     let (start, end) = self.head.path;
     let slice = &self.buf[start..end];

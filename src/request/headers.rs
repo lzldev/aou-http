@@ -1,4 +1,5 @@
 use crate::utils::range_from_subslice;
+use anyhow::anyhow;
 
 use super::VecOffset;
 
@@ -16,21 +17,39 @@ impl RequestHeaderParser {
   {
     let mut offset: usize = 0;
 
-    let headers = lines
-      .take_while(|b| *b != b"" && *b != b"\r") //TODO: Trim the \r correctly , And empty lines
-      .filter_map(|header| {
-        offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
+    let headerLines = lines.take_while(|b| *b != b"" && *b != b"\r");
+    let mut headers_vec = Vec::new();
 
-        let mut split = header.split(|b| b == &b':');
-        let (header, value) = (split.next()?, split.next()?);
+    for header in headerLines {
+      offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
+      let mut split = header.split(|b| b == &b':');
 
-        let header = range_from_subslice(buf, header);
-        let value = range_from_subslice(buf, value);
+      let (header, value) = (
+        split.next().ok_or(anyhow!("Invalid Header Name"))?,
+        split.next().ok_or(anyhow!("Invalid Header Value"))?,
+      );
 
-        Some((header, value))
-      })
-      .collect::<Vec<_>>();
+      let header = range_from_subslice(buf, header);
+      let value = range_from_subslice(buf, value);
 
-    Ok((offset, headers))
+      headers_vec.push((header, value))
+    }
+
+    // let headers = lines
+    //   .take_while(|b| *b != b"" && *b != b"\r") //TODO: Trim the \r correctly , And empty lines
+    //   .filter_map(|header| {
+    //     offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
+
+    //     let mut split = header.split(|b| b == &b':');
+    //     let (header, value) = (split.next()?, split.next()?);
+
+    //     let header = range_from_subslice(buf, header);
+    //     let value = range_from_subslice(buf, value);
+
+    //     Some((header, value))
+    //   })
+    //   .collect::<Vec<_>>();
+
+    Ok((offset, headers_vec))
   }
 }

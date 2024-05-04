@@ -5,6 +5,7 @@ use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi::JsFunction;
+use napi_derive::napi;
 use tokio::{net::TcpListener, sync::oneshot};
 
 #[napi]

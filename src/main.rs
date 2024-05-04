@@ -2,14 +2,16 @@ use anyhow::anyhow;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-mod request;
+pub mod request;
+pub mod utils;
 
-use request::RequestParser;
 use tokio::time::Instant;
 use tokio::{
   io::{AsyncReadExt, AsyncWriteExt},
   net::{TcpListener, TcpStream},
 };
+
+use request::{ParserState, RequestParser};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -36,13 +38,13 @@ async fn main() -> Result<(), anyhow::Error> {
 async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::Error> {
   let (mut stream, _) = socket;
 
-  let mut buf = Some(Vec::new());
-
   let mut _req: Option<RequestParser> = {
+    let mut buf = Some(Vec::new());
+    let mut state = ParserState::New;
+
     //TODO:Remove into Parse_frame
     loop {
       let mut taken = buf.take().expect("Taken None Buf");
-      let buf_len = taken.len();
       let n = tokio::select! {
         n = stream.read_buf(&mut taken) => {
           if let Err(n) = n {
@@ -51,36 +53,47 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
 
           n.unwrap()
         },
-        _ = tokio::time::sleep(Duration::from_millis(10)) => return Err(anyhow!("Timedout"))
+        // _ = tokio::time::sleep(Duration::from_millis(10)) => return Err(anyhow!("Timedout"))
       };
+      let buf_len = taken.len();
 
       if buf_len == 0 && n == 0 {
         break None;
       }
 
       if buf_len > 0 {
-        match RequestParser::parse_request(taken) {
-          request::ParseResponse::Success(req) => break Some(req),
-          request::ParseResponse::Failed(b) => {
-            buf = Some(b);
-            if n == 0 {
-              break None;
+        match RequestParser::parse_request(taken, state) {
+          Ok(res) => match res {
+            request::ParseResponse::Success(parser) => break Some(parser),
+            request::ParseResponse::Incomplete((b, new_state)) => {
+              dbg!("new State _ ", &new_state);
+              buf = Some(b);
+              state = new_state;
+
+              if n == 0 {
+                break None;
+              }
             }
+          },
+          Err(_) => {
+            break None;
           }
         };
       }
     }
   };
 
-  let old = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
-  let mut _req = old.into_request();
+  let parser = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
+  dbg!(parser);
 
-  let f = _req.buf.get_mut(0).unwrap();
-  *f = b'R';
-  drop(f);
+  // let mut _req = old.into_request();
 
-  dbg!(String::from_utf8_lossy(&_req.buf[..10]));
-  dbg!(String::from_utf8_lossy(&_req.head.method));
+  // let f = _req.buf.get_mut(0).unwrap();
+  // *f = b'R';
+  // drop(f);
+
+  // dbg!(String::from_utf8_lossy(&_req.buf[..10]));
+  // dbg!(String::from_utf8_lossy(&_req.head.method));
 
   let body_buf = format!("\nHello World\n{:#?}", Instant::now());
   let body_length = body_buf.len();

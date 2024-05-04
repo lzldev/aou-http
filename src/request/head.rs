@@ -25,7 +25,7 @@ impl RequestHead {
     let path = head_split.next().ok_or(anyhow!("Path not found Path"))?;
     let http_version = head_split.next().ok_or(anyhow!("Http Version not found"))?;
 
-    if http_version != b"HTTP/1.1" {
+    if http_version != b"HTTP/1.1\r" {
       return Err(anyhow!("Invalid HTTP Version"));
     }
 
