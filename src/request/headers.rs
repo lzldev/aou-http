@@ -1,11 +1,11 @@
 use crate::utils::range_from_subslice;
-use anyhow::anyhow;
 
-use super::{RequestToken, VecOffset};
+use super::VecOffset;
 
 pub type RequestHeaderVec = (VecOffset, VecOffset);
 pub type RequestHeaders = Vec<RequestHeaderVec>;
 
+#[derive(Debug, PartialEq)]
 pub enum HeaderParseError {
   Incomplete,
   Invalid,
@@ -69,5 +69,75 @@ impl RequestHeaderParser {
     }
 
     Ok((offset, headers_vec))
+  }
+}
+
+#[cfg(test)]
+mod unit_tests {
+  use crate::request::{HeaderParseError, RequestHeaderParser};
+
+  #[tokio::test]
+  async fn regular_request_headers() {
+    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+    let lines = buf.split(|c| c == &b'\n');
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let (offset, headers) = parser.unwrap();
+
+    assert_eq!(offset, 89, "Invalid Offset");
+    assert_eq!(headers.len(), 3, "Invalid amount of headers parsed");
+  }
+
+  #[tokio::test]
+  async fn incomplete_request_headers() {
+    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-s";
+    let lines = buf.split(|c| c == &b'\n');
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let err = parser.unwrap_err();
+
+    assert_eq!(
+      err,
+      HeaderParseError::Incomplete,
+      "Parser didn't return a incomplete result"
+    );
+  }
+
+  #[tokio::test]
+  async fn invalid_not_incomplete_request_headers() {
+    let buf = b"x-random-header: new_header\r\nUser-Agent: chrome-someth";
+    let lines = buf.split(|c| c == &b'\n');
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let err = parser.unwrap_err();
+
+    assert_ne!(
+      err,
+      HeaderParseError::Invalid,
+      "Parser should return incomplete and not Invalid"
+    );
+    assert_eq!(
+      err,
+      HeaderParseError::Incomplete,
+      "Parser should return a Incomplete Result"
+    );
+  }
+
+  #[tokio::test]
+  async fn request_without_host_is_invalid() {
+    let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+    let lines = buf.split(|c| c == &b'\n');
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let err = parser.unwrap_err();
+
+    assert_eq!(err, HeaderParseError::Invalid, "should be Invalid");
+
+    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+    let lines = buf.split(|c| c == &b'\n');
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+
+    assert!(parser.is_ok(), "should be Valid");
   }
 }
