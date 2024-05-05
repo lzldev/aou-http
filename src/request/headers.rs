@@ -28,7 +28,7 @@ impl RequestHeaderParser {
 
     for header in header_lines {
       offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
-      let mut split = header.split(|b| b == &b':');
+      let mut split = header.splitn(2, |b| b == &b':');
 
       let (header, value) = (
         split.next().ok_or(HeaderParseError::Incomplete)?,
@@ -51,11 +51,16 @@ impl RequestHeaderParser {
       return Err(HeaderParseError::Incomplete);
     }
 
-    let (_, last_key_token) = headers_vec.last().unwrap();
+    let (last_header_token, last_key_token) = headers_vec.last().unwrap();
     let last_char = &buf[(last_key_token.1) - 1..last_key_token.1];
 
     if last_char != b"\r" {
-      // dbg!(&last_char);
+      unsafe {
+        dbg!(String::from_utf8_unchecked(
+          (&buf[(last_header_token.0) - 1..last_key_token.1]).to_owned()
+        ))
+      };
+      dbg!(&last_char);
       return Err(HeaderParseError::Incomplete);
     }
 

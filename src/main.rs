@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
   let host = std::env::args()
     .skip(1)
     .next()
-    .unwrap_or("127.0.0.1:7070".into());
+    .unwrap_or("0.0.0.0:7070".into());
 
   let addr = host.parse::<SocketAddr>().expect("Invalid Address");
   let socket = TcpListener::bind(addr).await.expect("Couldn't bind server");
@@ -88,7 +88,7 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
           Ok(res) => match res {
             request::RequestParseResponse::Success(parser) => break Some(parser),
             request::RequestParseResponse::Incomplete((b, new_state)) => {
-              debug!("new State _ {:#?}", &new_state);
+              debug!("Incomplete State: {:#?}", &new_state);
 
               match new_state {
                 ParserState::Start { .. } => (),
@@ -101,6 +101,10 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
                   }
                 }
               };
+
+              let req = unsafe { String::from_utf8_unchecked(b.clone()) };
+              debug!("req: {}", req);
+              debug!("req: {:?}", new_state);
 
               buf = Some(b);
               state = new_state;
