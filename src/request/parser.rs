@@ -57,7 +57,6 @@ pub enum RequestParseResponse {
 }
 
 impl RequestParser {
-  #[tracing::instrument(skip_all)]
   pub fn parse_request(
     buf: Vec<u8>,
     state: ParserState,
@@ -71,7 +70,7 @@ impl RequestParser {
         offset = offset + size;
         head
       }
-      Err(head_parse_error) => {
+      Err(_) => {
         return Ok(RequestParseResponse::Incomplete((
           buf,
           ParserState::Start {

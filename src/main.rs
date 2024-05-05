@@ -48,7 +48,9 @@ async fn main() -> Result<(), anyhow::Error> {
       let span = info_span!("request");
       let _lock = span.enter();
 
+      let start = tokio::time::Instant::now();
       let n = process_request(con).await;
+      info!("r: {:?}", start.elapsed());
 
       match n {
         Ok(_) => info!("Ok : {req_n}"),
@@ -86,7 +88,6 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
           Ok(res) => match res {
             request::RequestParseResponse::Success(parser) => break Some(parser),
             request::RequestParseResponse::Incomplete((b, new_state)) => {
-              dbg!(String::from_utf8_lossy(&b), n);
               debug!("new State _ {:#?}", &new_state);
 
               match new_state {
@@ -116,7 +117,6 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
             }
           },
           Err(parse_fatal) => {
-            dbg!(&parse_fatal);
             error!("parse_request {parse_fatal:#?}");
             break None;
           }
@@ -126,7 +126,6 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
   };
 
   let req = _req.ok_or(anyhow!("Can't unwrap _req data"))?;
-  dbg!("{:}", String::from_utf8_lossy(&req.buf));
 
   let body_buf = format!("\nHello World\n{:#?}", Instant::now());
   let body_length = body_buf.len();

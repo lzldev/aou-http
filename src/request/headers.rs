@@ -36,7 +36,7 @@ impl RequestHeaderParser {
       );
 
       unsafe {
-        if std::str::from_utf8_unchecked(header).eq_ignore_ascii_case("Host") {
+        if has_host == false && std::str::from_utf8_unchecked(header).eq_ignore_ascii_case("Host") {
           has_host = true;
         }
       }
@@ -60,7 +60,6 @@ impl RequestHeaderParser {
     }
 
     if has_host == false {
-      dbg!("No head");
       return Err(HeaderParseError::Invalid);
     }
 

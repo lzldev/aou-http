@@ -30,6 +30,7 @@ tokio = { version = "1.37.0", features = [
     "io-util",
     "time",
 ] }
+bytes = "1.6.0"
 # tokio-uring = { version = "0.4.0" }
 
 [build-dependencies]
