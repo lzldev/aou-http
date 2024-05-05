@@ -12,7 +12,7 @@ use tokio::{
   net::{TcpListener, TcpStream},
 };
 
-use request::{ParserState, RequestParser};
+use request::{ParserState, RequestParseResponse, RequestParser};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -75,56 +75,59 @@ async fn process_request(socket: (TcpStream, SocketAddr)) -> Result<(), anyhow::
     loop {
       let mut taken = buf.take().expect("Taken None Buf");
       let prev_until = state.read_until().to_owned();
-      let n = stream.read_buf(&mut taken).await?;
+      let read = stream.read_buf(&mut taken).await?;
 
       let buf_len = taken.len();
 
-      if buf_len == 0 && n == 0 {
+      if buf_len == 0 && read == 0 {
+        break None;
+      } else if buf_len == 0 {
+        continue;
+      }
+
+      let parse = RequestParser::parse_request(taken, state);
+
+      if let Err(fatal_error) = parse {
+        error!("parse_request {fatal_error:#?}");
         break None;
       }
 
-      if buf_len > 0 {
-        match RequestParser::parse_request(taken, state) {
-          Ok(res) => match res {
-            request::RequestParseResponse::Success(parser) => break Some(parser),
-            request::RequestParseResponse::Incomplete((b, new_state)) => {
-              debug!("Incomplete State: {:#?}", &new_state);
+      let res = parse.unwrap();
 
-              match new_state {
-                ParserState::Start { .. } => (),
-                ParserState::Head { read_until, .. }
-                | ParserState::Headers { read_until, .. }
-                | ParserState::Body { read_until, .. } => {
-                  if prev_until == read_until {
-                    error!("Parser returned incomplete twice at : {read_until}");
-                    break None;
-                  }
-                }
-              };
+      let (b, new_state) = match res {
+        RequestParseResponse::Success(parser) => break Some(parser),
+        RequestParseResponse::Incomplete(b) => b,
+      };
 
-              let req = unsafe { String::from_utf8_unchecked(b.clone()) };
-              debug!("req: {}", req);
-              debug!("req: {:?}", new_state);
+      debug!("Incomplete State: {:#?}", &new_state);
 
-              buf = Some(b);
-              state = new_state;
-
-              if n == 0 {
-                debug!("Incomplete && n == 0 ");
-
-                unsafe {
-                  debug!("{}", String::from_utf8_unchecked(buf.unwrap_unchecked()));
-                }
-
-                break None;
-              }
-            }
-          },
-          Err(parse_fatal) => {
-            error!("parse_request {parse_fatal:#?}");
+      match new_state {
+        ParserState::Start { .. } => (),
+        ParserState::Head { read_until, .. }
+        | ParserState::Headers { read_until, .. }
+        | ParserState::Body { read_until, .. } => {
+          if prev_until == read_until {
+            error!("Parser returned incomplete twice at : {read_until}");
             break None;
           }
-        };
+        }
+      };
+
+      let req = unsafe { String::from_utf8_unchecked(b.clone()) };
+      debug!("req: {}", req);
+      debug!("req: {:?}", new_state);
+
+      buf = Some(b);
+      state = new_state;
+
+      if read == 0 {
+        debug!("Incomplete && n == 0 ");
+
+        unsafe {
+          debug!("{}", String::from_utf8_unchecked(buf.unwrap_unchecked()));
+        }
+
+        break None;
       }
     }
   };
