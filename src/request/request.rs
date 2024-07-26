@@ -1,13 +1,14 @@
 use core::str;
+use std::collections::HashMap;
 
-use super::{RequestHead, RequestHeaders, VecOffset};
+use super::{RequestHead, RequestHeaders, RequestParser, VecOffset};
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-#[napi]
+#[napi(js_name = "AouRequest")]
 #[derive(Debug)]
-pub struct AouRequest {
+pub struct Request {
   buf: Vec<u8>,
   head: RequestHead,
   headers: RequestHeaders,
@@ -15,35 +16,66 @@ pub struct AouRequest {
 }
 
 #[napi]
-impl AouRequest {
-  pub fn new(
-    buf: Vec<u8>,
-    head: RequestHead,
-    headers: RequestHeaders,
-    body: VecOffset,
-  ) -> AouRequest {
-    AouRequest {
+impl Request {
+  pub fn new(buf: Vec<u8>, head: RequestHead, headers: RequestHeaders, body: VecOffset) -> Request {
+    Request {
       buf,
       head,
       headers,
       body,
     }
   }
-  #[napi]
-  pub fn method(&self) -> String {
-    return String::from_utf8_lossy(&self.buf[self.head.method.0..self.head.method.1]).into();
-    // unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.method.0..self.head.method.1]) }
+
+  #[napi(factory)]
+  pub fn from_string(request: String) -> Self {
+    let parse = RequestParser::parse_request(
+      Vec::from(request.as_bytes()),
+      super::ParserState::Start { read_until: None },
+    )
+    .unwrap();
+
+    let req = match parse {
+      super::RequestParseResponse::Success(p) => p.into_request(),
+      super::RequestParseResponse::Incomplete(_) => panic!(),
+    };
+
+    req
   }
 
-  #[napi]
+  #[napi(getter)]
+  pub fn method(&self) -> &str {
+    unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.method.0..self.head.method.1]) }
+  }
+
+  #[napi(getter)]
   pub fn path(&self) -> &str {
     unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.path.0..self.head.path.1]) }
   }
 
-  #[napi]
+  #[napi(getter)]
   pub fn http_version(&self) -> &str {
     unsafe {
       std::str::from_utf8_unchecked(&self.buf[self.head.http_version.0..self.head.http_version.1])
     }
+  }
+
+  #[napi(getter)]
+  pub fn headers(&self) -> HashMap<String, String> {
+    let mut map = HashMap::<String, String>::new();
+    unsafe {
+      self.headers.iter().for_each(|v| {
+        map.insert(
+          std::str::from_utf8_unchecked(&self.buf[v.0 .0..v.0 .1]).to_string(),
+          std::str::from_utf8_unchecked(&self.buf[v.1 .0..v.1 .1]).to_string(),
+        );
+      });
+    }
+
+    map
+  }
+
+  #[napi(getter)]
+  pub fn body(&self) -> &str {
+    unsafe { std::str::from_utf8_unchecked(&self.buf[self.body.0..self.body.1]) }
   }
 }

@@ -8,14 +8,14 @@ use napi::JsFunction;
 use napi_derive::napi;
 use tokio::{net::TcpListener, sync::oneshot};
 
+type Handler = ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled>;
+
 #[napi]
 pub struct AouServer {
   options: AouOptions,
   handlers: HashMap<String, (Method, Handler)>, // TOOD This should have a arc around
   sender: Option<oneshot::Sender<()>>,
 }
-
-type Handler = ThreadsafeFunction<u32, ErrorStrategy::CalleeHandled>;
 
 #[napi]
 impl AouServer {

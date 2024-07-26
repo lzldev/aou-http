@@ -1,3 +1,7 @@
+#[macro_use]
+extern crate napi;
+extern crate napi_derive;
+
 pub mod request;
 pub mod utils;
 

@@ -26,7 +26,7 @@ use tokio::{
 
 pub async fn handle_request(
   socket: (&mut TcpStream, &mut SocketAddr),
-) -> Result<AouRequest, anyhow::Error> {
+) -> Result<Request, anyhow::Error> {
   let (stream, _) = socket;
 
   let mut _req: Result<RequestParser, anyhow::Error> = {

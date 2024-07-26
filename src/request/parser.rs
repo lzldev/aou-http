@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::anyhow;
 
-use super::{AouRequest, RequestHead, RequestHeaders, VecOffset};
+use super::{Request, RequestHead, RequestHeaders, VecOffset};
 
 #[derive(Debug)]
 pub struct RequestParser {
@@ -57,8 +57,8 @@ pub enum RequestParseResponse {
 }
 
 impl RequestParser {
-  pub fn into_request(self) -> AouRequest {
-    return AouRequest::new(self.buf, self.head, self.headers, self.body);
+  pub fn into_request(self) -> Request {
+    return Request::new(self.buf, self.head, self.headers, self.body);
   }
 
   pub fn parse_request(

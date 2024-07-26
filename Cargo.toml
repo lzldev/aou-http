@@ -2,10 +2,13 @@
 name = "aou_rs"
 edition = "2021"
 version = "0.1.0"
-autobins = false
 
 [lib]
 crate-type = ["cdylib"]
+
+# [[bin]]
+# name = "native"
+# path = "src/native.rs"
 
 [dependencies]
 anyhow = "1.0.82"
