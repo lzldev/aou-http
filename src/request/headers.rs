@@ -55,12 +55,12 @@ impl RequestHeaderParser {
     let last_char = &buf[(last_key_token.1) - 1..last_key_token.1];
 
     if last_char != b"\r" {
-      unsafe {
-        dbg!(String::from_utf8_unchecked(
-          (&buf[(last_header_token.0) - 1..last_key_token.1]).to_owned()
-        ))
-      };
-      dbg!(&last_char);
+      // unsafe {
+      //   dbg!(String::from_utf8_unchecked(
+      //     (&buf[(last_header_token.0) - 1..last_key_token.1]).to_owned()
+      //   ))
+      // };
+      // dbg!(&last_char);
       return Err(HeaderParseError::Incomplete);
     }
 

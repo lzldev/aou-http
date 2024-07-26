@@ -1,12 +1,6 @@
 import test from "ava";
 
-import { sum } from "../index.js";
-
-test("sum from native", (t) => {
-  t.is(sum(1, 2), 3);
-});
-
-import { AouServer } from "../index.js";
+import { AouRequest, AouServer } from "../index.js";
 
 test("initialize server", async (test) => {
   const server = new AouServer();

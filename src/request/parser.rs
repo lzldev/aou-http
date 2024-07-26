@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::anyhow;
 
-use super::{RequestHead, RequestHeaders, VecOffset};
+use super::{AouRequest, RequestHead, RequestHeaders, VecOffset};
 
 #[derive(Debug)]
 pub struct RequestParser {
@@ -57,6 +57,10 @@ pub enum RequestParseResponse {
 }
 
 impl RequestParser {
+  pub fn into_request(self) -> AouRequest {
+    return AouRequest::new(self.buf, self.head, self.headers, self.body);
+  }
+
   pub fn parse_request(
     buf: Vec<u8>,
     state: ParserState,
@@ -70,7 +74,11 @@ impl RequestParser {
         offset = offset + size;
         head
       }
-      Err(_) => {
+      Err(e) => {
+        if offset == state.read_until() {
+          return Err(e);
+        }
+
         return Ok(RequestParseResponse::Incomplete((
           buf,
           ParserState::Start {
@@ -93,13 +101,26 @@ impl RequestParser {
             read_until: buf_len,
             head,
           },
-        )))
+        )));
       }
       Err(HeaderParseError::Invalid) => return Err(anyhow!("Invalid Headers")),
     };
 
     let buf_len = buf.len();
 
+    if offset >= buf_len {
+      return Ok(RequestParseResponse::Incomplete((
+        buf,
+        ParserState::Head {
+          cursor: offset,
+          read_until: buf_len,
+          head,
+        },
+      )));
+    }
+
+    //TODO:This means only the header has been read.
+    //should be chekced and not panic
     debug_assert!(
       offset <= buf_len,
       "Buf:{:#?}\nOffset larger than buffer size : Offset {offset} : Buf {buf_len} Headers:{}",

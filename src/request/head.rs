@@ -10,6 +10,7 @@ pub struct RequestHead {
   pub path: VecOffset,
   pub http_version: VecOffset,
 }
+const HTTP1_1: &[u8] = b"HTTP/1.1\r";
 
 impl RequestHead {
   pub fn from_split_iter<'a>(
@@ -25,7 +26,8 @@ impl RequestHead {
     let path = head_split.next().ok_or(anyhow!("Path not found Path"))?;
     let http_version = head_split.next().ok_or(anyhow!("Http Version not found"))?;
 
-    if http_version != b"HTTP/1.1\r" {
+    if http_version != HTTP1_1 {
+      //TODO: This should throw a invalid head error
       return Err(anyhow!("Invalid HTTP Version"));
     }
 

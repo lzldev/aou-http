@@ -2,6 +2,7 @@
 name = "aou_rs"
 edition = "2021"
 version = "0.1.0"
+autobins = false
 
 [lib]
 crate-type = ["cdylib"]

@@ -6,8 +6,10 @@
 export interface AouOptions {
   json?: boolean
 }
-export function sum(a: number, b: number): number
-export class AouServer {
+export declare class AouRequest {
+  method(): string
+}
+export declare class AouServer {
   constructor(options?: AouOptions | undefined | null)
   isRunning(): boolean
   get(route: string, handler: (...args: any[]) => any): void

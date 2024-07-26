@@ -11,7 +11,7 @@ use tokio::{net::TcpListener, sync::oneshot};
 #[napi]
 pub struct AouServer {
   options: AouOptions,
-  handlers: HashMap<String, (Method, Handler)>,
+  handlers: HashMap<String, (Method, Handler)>, // TOOD This should have a arc around
   sender: Option<oneshot::Sender<()>>,
 }
 
@@ -65,7 +65,7 @@ impl AouServer {
     }
     let (route, function) = handler.unwrap();
 
-    eprintln!("will this print");
+    eprintln!("will this print?");
     let start = Instant::now();
     let _: Result<(), _> = function.call_async(Ok(32)).await;
     println!("End: {:?}", start.elapsed());
@@ -94,6 +94,7 @@ impl AouServer {
       loop {
         tokio::select! {
           Ok((socket,addr)) = listener.accept() => {
+
 
           }
           v = (&mut receiver) =>{
