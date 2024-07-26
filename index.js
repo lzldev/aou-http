@@ -310,7 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { AouRequest, AouServer } = nativeBinding
+const { AouRequest, AouInstance, AouServer } = nativeBinding
 
 module.exports.AouRequest = AouRequest
+module.exports.AouInstance = AouInstance
 module.exports.AouServer = AouServer

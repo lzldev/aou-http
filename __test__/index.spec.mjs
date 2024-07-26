@@ -6,18 +6,20 @@ test("initialize server", async (test) => {
   const server = new AouServer();
 
   test.truthy(server);
-  test.false(server.isRunning());
 
   let counter = 0;
-  server.get("/", (...funny) => {
-    console.info("Args,", funny);
-    console.log("Hello World from server ", counter);
-    counter++;
+
+  server.get("/", (req) => {
+    return {
+      Hello: "Hello",
+      number: Math.random() * 20,
+      inner: {
+        data: 1234,
+      },
+    };
   });
 
-  // await server.fakeListen();
-
-  // server.listen("127.0.0.1", 8080);
+  const instance = await server.listen("0.0.0.0", 7070);
 });
 
 test("requets parsing", async (test) => {

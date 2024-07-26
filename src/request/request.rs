@@ -1,5 +1,5 @@
 use core::str;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::{RequestHead, RequestHeaders, RequestParser, VecOffset};
 
@@ -60,8 +60,8 @@ impl Request {
   }
 
   #[napi(getter)]
-  pub fn headers(&self) -> HashMap<String, String> {
-    let mut map = HashMap::<String, String>::new();
+  pub fn headers(&self) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::<String, String>::new();
     unsafe {
       self.headers.iter().for_each(|v| {
         map.insert(

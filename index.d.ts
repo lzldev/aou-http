@@ -15,11 +15,9 @@ export declare class AouRequest {
   get headers(): Record<string, string>
   get body(): string
 }
+export declare class AouInstance { }
 export declare class AouServer {
   constructor(options?: AouOptions | undefined | null)
-  isRunning(): boolean
-  get(route: string, handler: (...args: any[]) => any): void
-  post(route: string, handler: (...args: any[]) => any): void
-  fakeListen(): Promise<void>
-  listen(host: string, port: number): Promise<void>
+  get(route:string,: handler:( request: AouRequest) => void): void
+  listen(host: string, port: number): Promise<AouInstance>
 }
