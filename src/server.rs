@@ -1,11 +1,14 @@
+use std::any::{type_name, type_name_of_val, Any};
+use std::fmt::{Debug, Display};
 use std::net::SocketAddrV4;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
-use napi::JsFunction;
+use napi::{bindgen_prelude::*, JsObject, NapiValue};
+use napi::{JsFunction, NapiRaw};
 use napi_derive::napi;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
@@ -14,6 +17,7 @@ use tokio::sync::broadcast;
 use tracing::error;
 
 use crate::request::{self, Request};
+use crate::response::AouResponse;
 
 #[napi]
 pub struct AouInstance {
@@ -40,7 +44,7 @@ impl AouServer {
     }
   }
 
-  #[napi(ts_args_type = "route:string,: handler:( request: AouRequest) => void")]
+  #[napi(ts_args_type = "route:string,: handler:( request: AouRequest) => Promise<AouResponse>")]
   pub fn get(&mut self, route: String, handler: JsFunction) -> Result<()> {
     let h: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = handler
       .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
@@ -89,7 +93,14 @@ impl AouServer {
             }
           };
 
-          let r = h.value.call_async::<serde_json::Value>(req).await?;
+          let r = h.value.call_async::<Promise<AouResponse>>(req).await?;
+
+          eprintln!("PROMISE TYPE {}", type_name_of_val(&r));
+
+          let r: AouResponse = r.await?;
+
+          eprintln!("RETURN TYPE {}", type_name_of_val(&r));
+          eprintln!("VALUE {r:#?}");
 
           // eprintln!("RETURN {r:#?}");
 
@@ -101,14 +112,15 @@ impl AouServer {
           let body_buf = json!({
             "message":"Hello World",
             "instant":ms,
-            "data":r
+            "data":r.data
           })
           .to_string();
 
-          let body_length = body_buf.len() + 4; //Length of \r\n
+          let content_length = body_buf.len();
+
           let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}\r\n\r\n",
-            body_length, body_buf
+            "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            r.status, content_length, body_buf
           );
           let _ = stream.write_all(response.as_bytes()).await?;
           stream.flush().await?;

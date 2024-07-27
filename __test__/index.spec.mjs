@@ -9,13 +9,21 @@ test("initialize server", async (test) => {
 
   let counter = 0;
 
-  server.get("/", (req) => {
+  server.get("/", async (req) => {
     return {
-      Hello: "Hello",
-      number: Math.random() * 20,
-      inner: {
-        data: 1234,
+      status: 200,
+      data: {
+        luckyNumber: Math.random() * 20,
       },
+      headers: {},
+    };
+  });
+
+  server.get("/1", async (req) => {
+    return {
+      status: 403,
+      headers: {},
+      data: undefined,
     };
   });
 
