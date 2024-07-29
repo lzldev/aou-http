@@ -7,9 +7,19 @@ const server = new AouServer({
 server.get("/", async (req, context) => {
   return {
     status: 200,
-    data: {
+    body: {
       path: req.path,
       data: Math.random() * 1000,
+    },
+  };
+});
+
+server.post("/", async (req, context) => {
+  return {
+    status: 200,
+    body: {
+      path: req.path,
+      data: "POST",
     },
   };
 });
