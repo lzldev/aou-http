@@ -1,10 +1,10 @@
 use core::str;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap};
 
 use super::{RequestHead, RequestHeaders, RequestParser, VecOffset};
 
-use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use serde_json::Map;
 
 #[napi(js_name = "AouRequest")]
 #[derive(Debug)]
@@ -13,6 +13,8 @@ pub struct Request {
   head: RequestHead,
   headers: RequestHeaders,
   body: VecOffset,
+  #[napi(writable = true, enumerable = true)]
+  pub context: serde_json::Value,
 }
 
 #[napi]
@@ -23,6 +25,7 @@ impl Request {
       head,
       headers,
       body,
+      context: serde_json::Value::Object(Map::new()),
     }
   }
 

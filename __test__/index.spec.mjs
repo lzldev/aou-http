@@ -10,6 +10,8 @@ test("initialize server", async (test) => {
   let counter = 0;
 
   server.get("/", async (req) => {
+    req.context.name = "hello";
+
     return {
       status: 200,
       data: {

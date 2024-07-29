@@ -4,7 +4,7 @@ const server = new AouServer({
   json: true,
 });
 
-server.get("/", async (req) => {
+server.get("/", async (req, context) => {
   return {
     status: 200,
     data: {
@@ -13,3 +13,5 @@ server.get("/", async (req) => {
     },
   };
 });
+
+await server.listen("0.0.0.0", 7070);

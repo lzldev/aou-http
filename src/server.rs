@@ -1,14 +1,13 @@
-use std::any::{type_name, type_name_of_val, Any};
-use std::fmt::{Debug, Display};
+use std::any::type_name_of_val;
+use std::fmt::Debug;
 use std::net::SocketAddrV4;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
-use napi::{bindgen_prelude::*, JsObject, NapiValue};
-use napi::{JsFunction, NapiRaw};
+use napi::JsFunction;
 use napi_derive::napi;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
@@ -54,7 +53,6 @@ impl AouServer {
       .router
       .insert(route, h)
       .expect("failed to insert handler");
-
     Ok(())
   }
 
@@ -95,14 +93,7 @@ impl AouServer {
 
           let r = h.value.call_async::<Promise<AouResponse>>(req).await?;
 
-          eprintln!("PROMISE TYPE {}", type_name_of_val(&r));
-
           let r: AouResponse = r.await?;
-
-          eprintln!("RETURN TYPE {}", type_name_of_val(&r));
-          eprintln!("VALUE {r:#?}");
-
-          // eprintln!("RETURN {r:#?}");
 
           let ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -112,7 +103,7 @@ impl AouServer {
           let body_buf = json!({
             "message":"Hello World",
             "instant":ms,
-            "data":r.data
+            "data":r.body
           })
           .to_string();
 

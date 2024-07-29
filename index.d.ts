@@ -13,6 +13,7 @@ export interface AouOptions {
 }
 export type Request = AouRequest
 export declare class AouRequest {
+  context: any
   static fromString(request: string): Request
   get method(): string
   get path(): string
