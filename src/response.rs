@@ -1,9 +1,6 @@
-use std::{
-  collections::{HashMap, HashSet},
-  hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
-use serde_json::{json, Map};
+use serde_json::json;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 #[napi(object)]

@@ -2,13 +2,11 @@ mod head;
 mod headers;
 mod parser;
 mod request;
-mod token;
 
 pub use head::*;
 pub use headers::*;
 pub use parser::*;
 pub use request::*;
-pub use token::*;
 
 type VecOffset = (usize, usize);
 
@@ -16,10 +14,7 @@ use anyhow::anyhow;
 use std::net::SocketAddr;
 use tracing::{debug, error};
 
-use tokio::{
-  io::{AsyncReadExt},
-  net::TcpStream,
-};
+use tokio::{io::AsyncReadExt, net::TcpStream};
 
 pub async fn handle_request(
   socket: (&mut TcpStream, &mut SocketAddr),

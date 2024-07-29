@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use matchit::MatchError;
 use napi::bindgen_prelude::*;
@@ -10,7 +9,6 @@ use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi::JsFunction;
 use napi_derive::napi;
-use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -114,7 +112,7 @@ impl AouServer {
             }
           };
 
-          let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : fIx
+          let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
 
           let handler: Option<&ThreadsafeFunction<Request, ErrorStrategy::Fatal>> = {
             match (route.value.get_method(method), route.value.get_all()) {

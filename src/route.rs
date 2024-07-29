@@ -1,5 +1,6 @@
 use crate::methods::HttpMethod;
 
+#[allow(non_snake_case)]
 #[derive(Debug, Clone, Copy)]
 pub struct AouRoute<T> {
   GET: Option<T>,
