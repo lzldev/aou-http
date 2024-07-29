@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use serde_json::json;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
-#[napi(object)]
+#[napi(object, js_name = "AouResponse")]
 #[derive(Debug)]
-pub struct AouResponse {
+pub struct Response {
   pub status: Option<u32>,
   #[napi(ts_type = "Record<String,String>")]
   pub status_message: Option<String>,
@@ -13,7 +13,7 @@ pub struct AouResponse {
   pub body: Option<serde_json::Value>,
 }
 
-impl Default for AouResponse {
+impl Default for Response {
   fn default() -> Self {
     Self {
       status: None,
@@ -24,8 +24,8 @@ impl Default for AouResponse {
   }
 }
 
-impl AouResponse {
-  pub async fn write_response(
+impl Response {
+  pub async fn write_to_stream(
     &self,
     static_headers: HashMap<String, String>,
     stream: &mut TcpStream,
@@ -35,7 +35,7 @@ impl AouResponse {
       .status_message
       .as_ref()
       .map(|f| f.as_str())
-      .or(AouResponse::status_message(status))
+      .or(Response::status_message(status))
       .unwrap_or("");
 
     let h_holder = self

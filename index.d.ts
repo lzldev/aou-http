@@ -15,6 +15,8 @@ export interface AouOptions {
 export type Request = AouRequest
 export declare class AouRequest {
   context: any
+  params: Record<string, string>
+  query: Record<string, string>
   static fromString(request: string): Request
   get method(): string
   get path(): string

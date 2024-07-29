@@ -1,7 +1,7 @@
 use core::str;
-use std::collections::{BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
-use super::{RequestHead, RequestHeaders, RequestParser, VecOffset};
+use super::{ParserResult, RequestHead, RequestHeaders, VecOffset};
 
 use napi_derive::napi;
 use serde_json::Map;
@@ -15,23 +15,34 @@ pub struct Request {
   body: VecOffset,
   #[napi(writable = true, enumerable = true)]
   pub context: serde_json::Value,
+  pub params: HashMap<String, String>,
+  pub query: HashMap<String, String>,
 }
 
 #[napi]
 impl Request {
-  pub fn new(buf: Vec<u8>, head: RequestHead, headers: RequestHeaders, body: VecOffset) -> Request {
+  pub fn new(
+    buf: Vec<u8>,
+    head: RequestHead,
+    headers: RequestHeaders,
+    body: VecOffset,
+    query: HashMap<String, String>,
+    params: HashMap<String, String>,
+  ) -> Request {
     Request {
       buf,
       head,
       headers,
       body,
       context: serde_json::Value::Object(Map::new()),
+      params,
+      query,
     }
   }
 
   #[napi(factory)]
   pub fn from_string(request: String) -> Self {
-    let parse = RequestParser::parse_request(
+    let parse = ParserResult::parse_request(
       Vec::from(request.as_bytes()),
       super::ParserState::Start { read_until: None },
     )

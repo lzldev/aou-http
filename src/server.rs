@@ -16,19 +16,19 @@ use tracing::error;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
-use crate::response::AouResponse;
-use crate::route::AouRoute;
+use crate::response::Response;
+use crate::route::Route;
 
 #[napi]
 pub struct AouInstance {
   _options: AouOptions,
-  _router: Arc<matchit::Router<AouRoute<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
+  _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
   _sender: broadcast::Sender<()>,
 }
 
 #[napi]
 pub struct AouServer {
-  router: matchit::Router<AouRoute<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>,
+  router: matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>,
   options: AouOptions,
 }
 
@@ -64,7 +64,7 @@ impl AouServer {
     let entry = self.router.at_mut(route.as_str());
 
     if let Err(MatchError::NotFound) = entry {
-      let mut new_route = AouRoute::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
+      let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
       new_route.set_method(method, handler);
 
       self.router.insert(route.as_str(), new_route).unwrap();
@@ -102,9 +102,10 @@ impl AouServer {
 
         let handlers = handlers.clone();
         tokio::spawn(async move {
-          let req = request::handle_request((&mut stream, &mut addr)).await?;
+          let mut req = request::handle_request((&mut stream, &mut addr)).await?;
 
-          let route = match handlers.as_ref().at(req.path()) {
+          let hc = req.path().to_owned();
+          let route = match handlers.as_ref().at(&hc) {
             Ok(h) => h,
             Err(err) => {
               error!("Couldn't find the handler -> {err}");
@@ -113,6 +114,14 @@ impl AouServer {
           };
 
           let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
+
+          let params: HashMap<String, String> = route
+            .params
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+
+          req.params = params;
 
           let handler: Option<&ThreadsafeFunction<Request, ErrorStrategy::Fatal>> = {
             match (route.value.get_method(method), route.value.get_all()) {
@@ -128,10 +137,10 @@ impl AouServer {
 
           let handler = handler.unwrap();
 
-          let r = handler.call_async::<Promise<AouResponse>>(req).await?;
-          let res: AouResponse = r.await?;
+          let r = handler.call_async::<Promise<Response>>(req).await?;
+          let res: Response = r.await?;
 
-          res.write_response(HashMap::new(), &mut stream).await?;
+          res.write_to_stream(HashMap::new(), &mut stream).await?;
           stream.flush().await?;
 
           Ok::<(), anyhow::Error>(())

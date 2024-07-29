@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
   request::{HeaderParseError, RequestHeaderParser},
   utils::range_from_subslice,
@@ -7,11 +9,11 @@ use anyhow::anyhow;
 use super::{Request, RequestHead, RequestHeaders, VecOffset};
 
 #[derive(Debug)]
-pub struct RequestParser {
+pub struct ParserResult {
   pub buf: Vec<u8>,
-  head: RequestHead,
-  headers: RequestHeaders,
-  body: VecOffset,
+  pub head: RequestHead,
+  pub headers: RequestHeaders,
+  pub body: VecOffset,
 }
 
 #[derive(Debug)]
@@ -52,13 +54,34 @@ impl ParserState {
 
 #[derive(Debug)]
 pub enum RequestParseResponse {
-  Success(RequestParser),
+  Success(ParserResult),
   Incomplete((Vec<u8>, ParserState)),
 }
 
-impl RequestParser {
+impl ParserResult {
   pub fn into_request(self) -> Request {
-    return Request::new(self.buf, self.head, self.headers, self.body);
+    let path =
+      unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.path.0..self.head.path.1]) };
+
+    let query = {
+      let (_, query) = path.rsplit_once("?").unwrap_or(("", ""));
+
+      query
+        .to_owned()
+        .split("&")
+        .map(|p| p.split_once("=").unwrap_or((p, "")))
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<HashMap<String, String>>()
+    };
+
+    return Request::new(
+      self.buf,
+      self.head,
+      self.headers,
+      self.body,
+      query,
+      HashMap::new(),
+    );
   }
 
   pub fn parse_request(
@@ -131,7 +154,7 @@ impl RequestParser {
     let body = &buf[offset..];
     let body = range_from_subslice(&buf, body);
 
-    let req = RequestParser {
+    let req = ParserResult {
       buf,
       head,
       headers,
@@ -144,13 +167,13 @@ impl RequestParser {
 
 #[cfg(test)]
 mod unit_tests {
-  use crate::request::{ParserState, RequestParseResponse, RequestParser};
+  use crate::request::{ParserResult, ParserState, RequestParseResponse};
   #[tokio::test]
   async fn invalid_http_version() {
     let buf =
       b"GET / HTTP/1.0\r\nHost: localhost:3000\r\nThe empty line before the body is missing";
 
-    let parse = RequestParser::parse_request(buf.into(), ParserState::Start { read_until: None });
+    let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
 
     assert!(
       parse.is_err(),
@@ -163,7 +186,7 @@ mod unit_tests {
     let buf =
       b"GET / HTTP/1.1\r\nHost: localhost:3000\r\nThe empty line before the body is missing";
 
-    let parse = RequestParser::parse_request(buf.into(), ParserState::Start { read_until: None });
+    let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
 
     assert!(
       parse.is_ok(),

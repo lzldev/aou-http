@@ -2,7 +2,7 @@ use crate::methods::HttpMethod;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Copy)]
-pub struct AouRoute<T> {
+pub struct Route<T> {
   GET: Option<T>,
   HEAD: Option<T>,
   POST: Option<T>,
@@ -15,7 +15,7 @@ pub struct AouRoute<T> {
   ALL: Option<T>,
 }
 
-impl<T> Default for AouRoute<T> {
+impl<T> Default for Route<T> {
   fn default() -> Self {
     Self {
       GET: None,
@@ -32,7 +32,7 @@ impl<T> Default for AouRoute<T> {
   }
 }
 
-impl<T> AouRoute<T> {
+impl<T> Route<T> {
   pub fn get_method(&self, method: HttpMethod) -> &Option<T> {
     match method {
       HttpMethod::GET => &self.GET,
