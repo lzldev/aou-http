@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
@@ -108,7 +109,7 @@ impl AouServer {
           let route = match handlers.as_ref().at(req.path()) {
             Ok(h) => h,
             Err(err) => {
-              error!("Didn't find the handler -> {err}");
+              error!("Couldn't find the handler -> {err}");
               return Err(anyhow::anyhow!("Route not found"));
             }
           };
@@ -130,31 +131,9 @@ impl AouServer {
           let handler = handler.unwrap();
 
           let r = handler.call_async::<Promise<AouResponse>>(req).await?;
-          let r: AouResponse = r.await?;
+          let res: AouResponse = r.await?;
 
-          let ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-
-          let body_buf = json!({
-            "message":"Hello World",
-            "instant":ms,
-            "data":r.body
-          })
-          .to_string();
-
-          let content_length = body_buf.len();
-
-          //TODO: STATUS MESSAGE
-          let response = format!(
-            "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-            r.status.unwrap_or(200),
-            content_length,
-            body_buf
-          );
-
-          let _ = stream.write_all(response.as_bytes()).await?;
+          res.write_response(HashMap::new(), &mut stream).await?;
           stream.flush().await?;
 
           Ok::<(), anyhow::Error>(())

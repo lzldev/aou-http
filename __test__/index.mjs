@@ -24,4 +24,11 @@ server.post("/", async (req, context) => {
   };
 });
 
+server.get("/not-found", async (req, context) => {
+  return {
+    status: 404,
+    body: "ooops",
+  };
+});
+
 await server.listen("0.0.0.0", 7070);

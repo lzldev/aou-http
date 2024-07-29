@@ -5,7 +5,8 @@
 
 export interface AouResponse {
   status?: number
-  headers?: Record<String,String>
+  statusMessage?: Record<String,String>
+  headers?: any
   body?: any
 }
 export interface AouOptions {
