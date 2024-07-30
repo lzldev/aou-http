@@ -1,38 +1,35 @@
-import test from "ava";
+import process from "node:process";
+import test, { registerCompletionHandler } from "ava";
 
 import { AouRequest, AouServer } from "../index.js";
 
-test("initialize server", async (test) => {
-  const server = new AouServer();
+test("setup server and send request", async (test) => {
+  let server = new AouServer();
 
   test.truthy(server);
 
-  let counter = 0;
-
-  server.get("/", async (req) => {
-    req.context.name = "hello";
+  server.get("/route/{file}", async (req) => {
+    const file = req.params.file;
 
     return {
-      status: 200,
-      data: {
-        luckyNumber: Math.random() * 20,
+      body: {
+        file,
       },
-      headers: {},
     };
   });
 
-  server.get("/1", async (req) => {
-    return {
-      status: 403,
-      headers: {},
-      data: undefined,
-    };
-  });
+  const [addr, port] = ["0.0.0.0", 7070];
+  const instance = await server.listen(addr, port);
 
-  const instance = await server.listen("0.0.0.0", 7070);
+  const res = await fetch(`http://${addr}:${port}/route/f`);
+  const body = await res.json();
+
+  test.is(res.status, 200);
+  test.truthy(body);
+  test.assert(body.file === "f");
 });
 
-test("requets parsing", async (test) => {
+test("requests parsing", async (test) => {
   const request = AouRequest.fromString(
     `GET / HTTP/1.1\r\nHost: localhost:7070\r\nContent-Length: 25\r\n\r\n`
   );
@@ -40,3 +37,5 @@ test("requets parsing", async (test) => {
   test.is(request.method, "GET");
   test.is(request.path, "/");
 });
+
+registerCompletionHandler(() => process.exit(0));

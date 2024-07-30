@@ -1,5 +1,5 @@
 {
-  "name": "aou-linux-x64-gnu",
+  "name": "@aou-http/server-linux-x64-gnu",
   "version": "0.0.0",
   "os": [
     "linux"

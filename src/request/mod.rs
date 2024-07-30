@@ -2,13 +2,11 @@ mod head;
 mod headers;
 mod parser;
 mod request;
-mod token;
 
 pub use head::*;
 pub use headers::*;
 pub use parser::*;
 pub use request::*;
-pub use token::*;
 
 type VecOffset = (usize, usize);
 
@@ -16,17 +14,14 @@ use anyhow::anyhow;
 use std::net::SocketAddr;
 use tracing::{debug, error};
 
-use tokio::{
-  io::{AsyncReadExt},
-  net::TcpStream,
-};
+use tokio::{io::AsyncReadExt, net::TcpStream};
 
 pub async fn handle_request(
   socket: (&mut TcpStream, &mut SocketAddr),
 ) -> Result<Request, anyhow::Error> {
   let (stream, _) = socket;
 
-  let mut _req: Result<RequestParser, anyhow::Error> = {
+  let mut _result: Result<ParserResult, anyhow::Error> = {
     let mut buf = Some(Vec::new());
     let mut state = ParserState::Start { read_until: None };
 
@@ -43,7 +38,7 @@ pub async fn handle_request(
         continue;
       }
 
-      let parse = RequestParser::parse_request(taken, state)?;
+      let parse = ParserResult::parse_request(taken, state)?;
 
       let (new_buf, new_state) = match parse {
         RequestParseResponse::Incomplete(state) => state,
@@ -79,12 +74,7 @@ pub async fn handle_request(
     }
   };
 
-  let req = _req?;
+  let result = _result?;
 
-  let unsafe_buf = unsafe { String::from_utf8_unchecked(req.buf.clone()) };
-  debug!("[REQ] RAW: {}", unsafe_buf);
-  debug!("[REQ] RESULT: {:?}", req);
-  drop(unsafe_buf);
-
-  Ok(req.into_request())
+  Ok(result.into_request())
 }
