@@ -6,8 +6,8 @@
 export interface AouResponse {
   status?: number
   statusMessage?: Record<string,string>
-  headers?: any
-  body?: any
+  headers?: Record<string, string>
+  body: any
 }
 export interface AouOptions {
   json?: boolean

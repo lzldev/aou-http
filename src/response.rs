@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use serde_json::json;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 #[napi(object, js_name = "AouResponse")]
@@ -9,8 +8,8 @@ pub struct Response {
   pub status: Option<u32>,
   #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
-  pub headers: Option<serde_json::Value>,
-  pub body: Option<serde_json::Value>,
+  pub headers: Option<HashMap<String, String>>,
+  pub body: serde_json::Value,
 }
 
 impl Default for Response {
@@ -38,60 +37,56 @@ impl Response {
       .or(Response::status_message(status))
       .unwrap_or("");
 
-    let h_holder = self
-      .headers
-      .as_ref()
-      .and_then(|value| {
-        if value.is_object() {
-          Some(value.to_owned())
-        } else {
-          Some(json!({}))
-        }
-      })
-      .unwrap_or(json!({}));
+    let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
+    let headers = self.headers.as_ref().unwrap_or(&empty_headers);
 
-    let headers = h_holder.as_object().unwrap();
-
-    let body_buf = self
-      .body
-      .as_ref()
-      .map(|f| f.to_string())
-      .unwrap_or(String::new());
-
-    let headers: String = {
-      let mut r = String::new();
-      let mut set = HashSet::<&String>::new();
-
-      static_headers
-        .iter()
-        .for_each(|(key, value)| match headers.get(key) {
-          Some(h) => {
-            set.insert(key);
-            r.push_str(format!("{key}: {} \r\n", h.to_string()).as_str())
-          }
-          None => r.push_str(format!("{key}: {value} \r\n").as_str()),
-        });
-
-      if !self.headers.is_none() {
-        headers.iter().for_each(|(key, value)| {
-          if set.contains(key) || key == "Content-Length" {
-            return;
-          }
-          r.push_str(format!("{key}: {value} \r\n").as_str());
-        });
-      }
-
-      r.push_str(format!("Content-Length: {} \r\n", body_buf.len()).as_str());
-      r.into()
-    };
+    let body_buf = Self::body_buf(&self.body);
+    let headers_buf = Self::headers_buf(body_buf.len(), static_headers, headers);
 
     stream
       .write_all(
-        format!("HTTP/1.1 {status} {status_message}\r\n{headers}\r\n{body_buf}").as_bytes(),
+        format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n{body_buf}").as_bytes(),
       )
       .await?;
 
     Ok(())
+  }
+
+  fn body_buf(value: &serde_json::Value) -> String {
+    match value {
+      serde_json::Value::String(str) => str.to_owned(),
+      _ => value.to_string(),
+    }
+  }
+
+  fn headers_buf(
+    content_length: usize,
+    static_headers: HashMap<String, String>,
+    headers: &HashMap<String, String>,
+  ) -> String {
+    let mut r = String::new();
+    let mut set = HashSet::<&String>::new();
+
+    static_headers
+      .iter()
+      .for_each(|(key, value)| match headers.get(key) {
+        Some(h) => {
+          set.insert(key);
+          r.push_str(format!("{key}: {} \r\n", h.as_str()).as_str())
+        }
+        None => r.push_str(format!("{key}: {value} \r\n").as_str()),
+      });
+
+    headers.iter().for_each(|(key, value)| {
+      if set.contains(key) || key == "Content-Length" {
+        return;
+      }
+      r.push_str(format!("{key}: {value} \r\n").as_str());
+    });
+
+    r.push_str(format!("Content-Length: {} \r\n", content_length).as_str());
+
+    r
   }
 
   fn status_message<'r>(status_code: u32) -> Option<&'r str> {
