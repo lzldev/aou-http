@@ -10,7 +10,7 @@ export interface AouResponse {
   body: any
 }
 export interface AouOptions {
-  json?: boolean
+  tracing?: boolean
 }
 export type Request = AouRequest
 export declare class AouRequest {
@@ -30,6 +30,7 @@ export declare class AouInstance {
 }
 export declare class AouServer {
   constructor(options?: AouOptions | undefined | null)
+  listen(host: string, port: number): Promise<AouInstance>
   get(route:void,handler:void): void
   head(route:void,handler:void): void
   post(route:void,handler:void): void
@@ -40,7 +41,6 @@ export declare class AouServer {
   trace(route:void,handler:void): void
   patch(route:void,handler:void): void
   all(route:void,handler:void): void
-  listen(host: string, port: number): Promise<AouInstance>
 }
 type RemoveLeadingChar<
   TLeading extends string,
