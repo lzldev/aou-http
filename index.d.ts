@@ -29,5 +29,6 @@ export declare class AouServer {
   constructor(options?: AouOptions | undefined | null)
   post(route:string,: handler:(request: AouRequest) => Promise<AouResponse>): void
   get(route:string,: handler:(request: AouRequest) => Promise<AouResponse>): void
+  all(route:string,: handler:(request: AouRequest) => Promise<AouResponse>): void
   listen(host: string, port: number): Promise<AouInstance>
 }

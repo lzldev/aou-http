@@ -11,7 +11,7 @@ pub use request::*;
 type VecOffset = (usize, usize);
 
 use anyhow::anyhow;
-use std::{collections::HashMap, net::SocketAddr};
+use std::net::SocketAddr;
 use tracing::{debug, error};
 
 use tokio::{io::AsyncReadExt, net::TcpStream};

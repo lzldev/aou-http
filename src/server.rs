@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
 
-use matchit::MatchError;
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
@@ -13,6 +12,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::error;
+use tracing_subscriber::EnvFilter;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
@@ -56,30 +56,60 @@ impl AouServer {
     Ok(())
   }
 
+  #[napi(ts_args_type = "route:string,: handler:(request: AouRequest) => Promise<AouResponse>")]
+  pub fn all(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_all(route, handler);
+    Ok(())
+  }
+
+  fn insert_all(&mut self, route: String, function: JsFunction) {
+    let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
+      .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
+      .unwrap();
+
+    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
+    new_route.set_all(handler.clone());
+
+    match self.router.insert(route.as_str(), new_route) {
+      Ok(_) => (),
+      Err(_) => {
+        let entry = self.router.at_mut(route.as_str()).unwrap();
+        if entry.value.has_all() {
+          panic!("Tried to overwrite ALL at {}", route.as_str());
+        }
+        entry.value.set_all(handler)
+      }
+    }
+  }
+
   fn insert_route(&mut self, route: String, method: HttpMethod, function: JsFunction) {
     let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
       .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
       .unwrap();
 
-    let entry = self.router.at_mut(route.as_str());
+    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
+    new_route.set_method(method, handler.clone());
 
-    if let Err(MatchError::NotFound) = entry {
-      let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
-      new_route.set_method(method, handler);
-
-      self.router.insert(route.as_str(), new_route).unwrap();
-
-      return;
-    }
-
-    let entry = entry.unwrap().value;
-    entry.set_method(method, handler)
+    match self.router.insert(route.as_str(), new_route) {
+      Ok(_) => (),
+      Err(_) => {
+        let entry = self.router.at_mut(route.as_str()).unwrap();
+        if entry.value.has_method(method) {
+          panic!(
+            "Tried to overwrite method {} at {}",
+            method.to_str(),
+            route.as_str()
+          );
+        }
+        entry.value.set_method(method, handler)
+      }
+    };
   }
 
   #[napi]
   pub async fn listen(&self, host: String, port: u32) -> AouInstance {
     let handlers = Arc::new(self.router.clone());
-    let handlers2 = handlers.clone();
+    let handlers_cpy = handlers.clone();
 
     let (sender, _receiver) = broadcast::channel::<()>(1024);
 
@@ -95,12 +125,12 @@ impl AouServer {
     .expect("Couldn't establish tcp connection");
 
     tokio::spawn(async move {
-      let handlers = handlers.clone();
+      let handlers = handlers;
 
       loop {
         let (mut stream, mut addr) = listener.accept().await.expect("Failed to accept socket");
-
         let handlers = handlers.clone();
+
         tokio::spawn(async move {
           let mut req = request::handle_request((&mut stream, &mut addr)).await?;
 
@@ -115,13 +145,11 @@ impl AouServer {
 
           let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
 
-          let params: HashMap<String, String> = route
+          req.params = route
             .params
             .iter()
             .map(|(k, v)| (k.to_owned(), v.to_owned()))
             .collect();
-
-          req.params = params;
 
           let handler: Option<&ThreadsafeFunction<Request, ErrorStrategy::Fatal>> = {
             match (route.value.get_method(method), route.value.get_all()) {
@@ -149,7 +177,7 @@ impl AouServer {
     });
 
     AouInstance {
-      _router: handlers2,
+      _router: handlers_cpy,
       _options: self.options,
       _sender: sender,
     }

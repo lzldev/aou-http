@@ -64,6 +64,24 @@ impl<T> Route<T> {
     }
   }
 
+  pub fn has_method(&self, method: HttpMethod) -> bool {
+    match method {
+      HttpMethod::GET => self.GET.is_some(),
+      HttpMethod::HEAD => self.HEAD.is_some(),
+      HttpMethod::POST => self.POST.is_some(),
+      HttpMethod::PUT => self.PUT.is_some(),
+      HttpMethod::DELETE => self.DELETE.is_some(),
+      HttpMethod::CONNECT => self.CONNECT.is_some(),
+      HttpMethod::OPTIONS => self.OPTIONS.is_some(),
+      HttpMethod::TRACE => self.TRACE.is_some(),
+      HttpMethod::PATCH => self.PATCH.is_some(),
+    }
+  }
+
+  pub fn has_all(&self) -> bool {
+    self.ALL.is_some()
+  }
+
   pub fn set_all(&mut self, value: T) {
     self.ALL = Some(value)
   }
