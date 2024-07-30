@@ -12,6 +12,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::error;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
@@ -20,6 +22,8 @@ use crate::route::Route;
 
 #[napi]
 pub struct AouInstance {
+  pub ip: String,
+  pub port: u32,
   _options: AouOptions,
   _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
   _sender: broadcast::Sender<()>,
@@ -154,16 +158,13 @@ impl AouServer {
 
     let (sender, _receiver) = broadcast::channel::<()>(1024);
 
-    let addr = format!("{host}:{port}");
+    let addr = format!("{host}:{port}")
+      .parse::<SocketAddrV4>()
+      .expect("Invalid Server Address");
 
-    let listener = TcpListener::bind(
-      addr
-        .as_str()
-        .parse::<SocketAddrV4>()
-        .expect("Invalid Server Address"),
-    )
-    .await
-    .expect("Couldn't establish tcp connection");
+    let listener = TcpListener::bind(&addr)
+      .await
+      .expect("Couldn't establish tcp connection");
 
     tokio::spawn(async move {
       let handlers = handlers;
@@ -176,21 +177,17 @@ impl AouServer {
           let mut req = request::handle_request((&mut stream, &mut addr)).await?;
 
           let hc = req.path().to_owned();
-          let route = match handlers.as_ref().at(&hc) {
+          let (l, _) = hc.split_once("?").unwrap_or((&hc, ""));
+
+          let route = match handlers.as_ref().at(l) {
             Ok(h) => h,
             Err(err) => {
-              error!("Couldn't find the handler -> {err}");
+              error!("Couldn't find the handler {hc} -> {err}");
               return Err(anyhow::anyhow!("Route not found"));
             }
           };
 
           let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
-
-          req.params = route
-            .params
-            .iter()
-            .map(|(k, v)| (k.to_owned(), v.to_owned()))
-            .collect();
 
           let handler: Option<&ThreadsafeFunction<Request, ErrorStrategy::Fatal>> = {
             match (route.value.get_method(method), route.value.get_all()) {
@@ -206,6 +203,12 @@ impl AouServer {
 
           let handler = handler.unwrap();
 
+          req.params = route
+            .params
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+
           let r = handler.call_async::<Promise<Response>>(req).await?;
           let res: Response = r.await?;
 
@@ -218,6 +221,8 @@ impl AouServer {
     });
 
     AouInstance {
+      ip: addr.ip().to_string(),
+      port: addr.port() as u32,
       _router: handlers_cpy,
       _options: self.options,
       _sender: sender,
