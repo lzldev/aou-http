@@ -12,8 +12,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::error;
-use tracing::info;
-use tracing_subscriber::EnvFilter;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};

@@ -14,6 +14,7 @@ export interface AouOptions {
 }
 export type Request = AouRequest
 export declare class AouRequest {
+  context: any
   params: {}
   query: Record<string, string>
   static fromString(request: string): Request
