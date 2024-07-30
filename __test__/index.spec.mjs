@@ -3,30 +3,51 @@ import test, { registerCompletionHandler } from "ava";
 
 import { AouRequest, AouServer } from "../index.js";
 
+let initial_port = 7070;
+
 test("setup server and send request", async (test) => {
   let server = new AouServer();
 
   test.truthy(server);
 
   server.get("/route/{file}", async (req) => {
-    const file = req.params.file;
+    const param = req.params.file;
+    const query = req.query.query;
+    const header = req.headers["x-test-header"];
 
     return {
       body: {
-        file,
+        param,
+        query,
+        header,
       },
     };
   });
 
-  const [addr, port] = ["0.0.0.0", 7070];
+  const test_param = "f";
+  const test_query = "test-query";
+  const test_header = "test-header-body";
+
+  const [addr, port] = ["0.0.0.0", initial_port++];
   const instance = await server.listen(addr, port);
 
-  const res = await fetch(`http://${addr}:${port}/route/f`);
+  const res = await fetch(
+    `http://${addr}:${port}/route/${test_param}?query=${test_query}`,
+    {
+      headers: {
+        "x-test-header": test_header,
+      },
+    }
+  );
+
   const body = await res.json();
 
   test.is(res.status, 200);
+
   test.truthy(body);
-  test.assert(body.file === "f");
+  test.is(body.param, test_param);
+  test.is(body.query, test_query);
+  test.is(body.header, test_header);
 });
 
 test("requests parsing", async (test) => {
