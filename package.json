@@ -25,8 +25,9 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release && yarn run types:extend",
-    "build:debug": "napi build --platform && yarn run types:extend",
+    "build:local": "napi build --platform --release && yarn types:extend",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "ava",
     "universal": "napi universal",
