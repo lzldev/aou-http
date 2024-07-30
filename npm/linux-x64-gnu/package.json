@@ -1,6 +1,9 @@
 {
   "name": "@aou-http/server-linux-x64-gnu",
   "version": "0.0.2",
+  "repository": {
+    "url": "https://github.com/lzldev/aou-http"
+  },
   "os": [
     "linux"
   ],
