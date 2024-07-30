@@ -7,7 +7,7 @@ use tokio::{io::AsyncWriteExt, net::TcpStream};
 #[derive(Debug)]
 pub struct Response {
   pub status: Option<u32>,
-  #[napi(ts_type = "Record<String,String>")]
+  #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
   pub headers: Option<serde_json::Value>,
   pub body: Option<serde_json::Value>,

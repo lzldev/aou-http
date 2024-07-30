@@ -15,6 +15,7 @@ pub struct Request {
   body: VecOffset,
   #[napi(writable = true, enumerable = true)]
   pub context: serde_json::Value,
+  #[napi(ts_type = "{}")]
   pub params: HashMap<String, String>,
   pub query: HashMap<String, String>,
 }

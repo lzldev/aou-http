@@ -12,7 +12,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::error;
-use tracing_subscriber::EnvFilter;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
@@ -44,19 +43,61 @@ impl AouServer {
     }
   }
 
-  #[napi(ts_args_type = "route:string,: handler:(request: AouRequest) => Promise<AouResponse>")]
-  pub fn post(&mut self, route: String, handler: JsFunction) -> Result<()> {
-    self.insert_route(route, HttpMethod::POST, handler);
-    Ok(())
-  }
-
-  #[napi(ts_args_type = "route:string,: handler:(request: AouRequest) => Promise<AouResponse>")]
+  #[napi(ts_args_type = "route:void,handler:void")]
   pub fn get(&mut self, route: String, handler: JsFunction) -> Result<()> {
     self.insert_route(route, HttpMethod::GET, handler);
     Ok(())
   }
 
-  #[napi(ts_args_type = "route:string,: handler:(request: AouRequest) => Promise<AouResponse>")]
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn head(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::HEAD, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn post(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::POST, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn put(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::PUT, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn delete(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::DELETE, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn connect(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::CONNECT, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn options(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::OPTIONS, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn trace(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::TRACE, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
+  pub fn patch(&mut self, route: String, handler: JsFunction) -> Result<()> {
+    self.insert_route(route, HttpMethod::PATCH, handler);
+    Ok(())
+  }
+
+  #[napi(ts_args_type = "route:void,handler:void")]
   pub fn all(&mut self, route: String, handler: JsFunction) -> Result<()> {
     self.insert_all(route, handler);
     Ok(())
