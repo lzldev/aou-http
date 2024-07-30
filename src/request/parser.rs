@@ -8,6 +8,13 @@ use anyhow::anyhow;
 
 use super::{Request, RequestHead, RequestHeaders, VecOffset};
 
+pub struct RequestParser;
+impl RequestParser {
+  pub fn split_buf_lines<'a>(buf: &'a [u8]) -> std::slice::Split<'a, u8, impl FnMut(&u8) -> bool> {
+    buf.split(|c| c == &b'\n')
+  }
+}
+
 #[derive(Debug)]
 pub struct ParserResult {
   pub buf: Vec<u8>,
@@ -90,6 +97,7 @@ impl ParserResult {
   ) -> Result<RequestParseResponse, anyhow::Error> {
     let buf_len = buf.len();
     let mut offset: usize = 0;
+
     let mut lines = buf.split(|b| b == &b'\n');
 
     let head = match RequestHead::from_split_iter(&mut lines, &buf) {
@@ -126,6 +134,7 @@ impl ParserResult {
           },
         )));
       }
+      Err(HeaderParseError::NoHost) => return Err(anyhow!("Host Header not present")),
       Err(HeaderParseError::Invalid) => return Err(anyhow!("Invalid Headers")),
     };
 
@@ -179,6 +188,16 @@ mod unit_tests {
       parse.is_err(),
       "Parse should return a Invalid HTTP Version Error Result"
     );
+  }
+
+  #[tokio::test]
+  async fn invalid_header_whitespace() {
+    let buf =
+      b"GET / HTTP/1.1\r\nHost: localhost:3000\r\nx-custom-header:invalid\r\nThe empty line before the body is missing";
+
+    let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
+
+    assert!(parse.is_err(), "Parse should return a Invalid HEADER");
   }
 
   #[tokio::test]

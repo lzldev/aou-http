@@ -24,7 +24,10 @@ export declare class AouRequest {
   get headers(): Record<string, string>
   get body(): string
 }
-export declare class AouInstance { }
+export declare class AouInstance {
+  ip: string
+  port: number
+}
 export declare class AouServer {
   constructor(options?: AouOptions | undefined | null)
   get(route:void,handler:void): void
