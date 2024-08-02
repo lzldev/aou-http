@@ -81,11 +81,11 @@ impl AouServer {
       let handlers = handlers;
 
       loop {
-        let (mut stream, mut addr) = listener.accept().await.expect("Failed to accept socket");
+        let (mut stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
         let handlers = handlers.clone();
 
         tokio::spawn(async move {
-          let mut req = match request::handle_request((&mut stream, &mut addr)).await {
+          let mut req = match request::handle_request(&mut stream).await {
             Ok(req) => req,
             Err(err) => {
               error!("Error Handling Request {err}");

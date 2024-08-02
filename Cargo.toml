@@ -36,13 +36,14 @@ tokio = { version = "1.37.0", features = [
 ] }
 bytes = "1.6.0"
 matchit = "0.8.4"
-# tokio-uring = { version = "0.4.0" }
 
 [build-dependencies]
 napi-build = "2.0.1"
 
 [dev-dependencies]
 tokio = { version = "1.37.0", features = ['full', 'test-util'] }
+tokio-test = "0.4.4"
+
 
 [profile.release]
 lto = true
