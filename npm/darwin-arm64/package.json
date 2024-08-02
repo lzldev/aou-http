@@ -1,15 +1,15 @@
 {
-  "name": "@aou-http/server-darwin-x64",
-  "version": "0.0.4",
+  "name": "@aou-http/server-darwin-arm64",
+  "version": "0.0.7",
   "os": [
     "darwin"
   ],
   "cpu": [
-    "x64"
+    "arm64"
   ],
-  "main": "aou.darwin-x64.node",
+  "main": "aou.darwin-arm64.node",
   "files": [
-    "aou.darwin-x64.node"
+    "aou.darwin-arm64.node"
   ],
   "license": "MIT",
   "engines": {

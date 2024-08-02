@@ -1,15 +1,15 @@
 {
-  "name": "@aou-http/server-linux-x64-gnu",
-  "version": "0.0.4",
+  "name": "@aou-http/server-linux-x64-musl",
+  "version": "0.0.7",
   "os": [
     "linux"
   ],
   "cpu": [
     "x64"
   ],
-  "main": "aou.linux-x64-gnu.node",
+  "main": "aou.linux-x64-musl.node",
   "files": [
-    "aou.linux-x64-gnu.node"
+    "aou.linux-x64-musl.node"
   ],
   "license": "MIT",
   "engines": {
@@ -19,6 +19,6 @@
     "url": "https://github.com/lzldev/aou-http"
   },
   "libc": [
-    "glibc"
+    "musl"
   ]
 }

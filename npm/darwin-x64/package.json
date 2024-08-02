@@ -1,15 +1,15 @@
 {
-  "name": "@aou-http/server-linux-x64-musl",
-  "version": "0.0.4",
+  "name": "@aou-http/server-darwin-x64",
+  "version": "0.0.7",
   "os": [
-    "linux"
+    "darwin"
   ],
   "cpu": [
     "x64"
   ],
-  "main": "aou.linux-x64-musl.node",
+  "main": "aou.darwin-x64.node",
   "files": [
-    "aou.linux-x64-musl.node"
+    "aou.darwin-x64.node"
   ],
   "license": "MIT",
   "engines": {
@@ -17,8 +17,5 @@
   },
   "repository": {
     "url": "https://github.com/lzldev/aou-http"
-  },
-  "libc": [
-    "musl"
-  ]
+  }
 }
