@@ -9,9 +9,11 @@
   "napi": {
     "name": "aou",
     "triples": {
-      "defaults": false,
+      "defaults": true,
       "additional": [
-        "x86_64-unknown-linux-gnu"
+        "aarch64-apple-darwin",
+        "x86_64-unknown-linux-musl",
+        "x86_64-unknown-freebsd"
       ]
     }
   },
