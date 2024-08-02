@@ -1,3 +1,5 @@
+//FROM - extend.d.ts
+
 type RemoveLeadingChar<
   TLeading extends string,
   TString extends string
@@ -51,4 +53,8 @@ declare interface AouServer {
     route: TRoute,
     handler: (req: AouRequest & { params: TParams }) => Promise<AouResponse>
   ): void;
+}
+
+declare class AouError {
+  constructor(error: AouResponse);
 }

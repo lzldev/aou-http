@@ -29,13 +29,14 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build:local": "napi build --platform --release && yarn types:extend",
+    "build:local": "napi build --platform && yarn types:extend",
+    "build:local:release": "napi build --platform --release && yarn types:extend",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "ava",
     "universal": "napi universal",
     "version": "napi version",
-    "types:extend": "cat ./extend.d.ts >> ./index.d.ts"
+    "types:extend": "cat ./extend.d.ts >> ./index.d.ts && cat ./extend.js >> ./index.js"
   }
 }

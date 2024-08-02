@@ -26,8 +26,8 @@ impl Default for Response {
 impl Response {
   pub async fn write_to_stream(
     &self,
-    static_headers: HashMap<String, String>,
     stream: &mut TcpStream,
+    static_headers: &HashMap<String, String>,
   ) -> Result<(), anyhow::Error> {
     let status = self.status.unwrap_or(200);
     let status_message = self
@@ -61,7 +61,7 @@ impl Response {
 
   fn headers_buf(
     content_length: usize,
-    static_headers: HashMap<String, String>,
+    static_headers: &HashMap<String, String>,
     headers: &HashMap<String, String>,
   ) -> String {
     let mut r = String::new();
