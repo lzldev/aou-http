@@ -71,7 +71,7 @@ impl ParserResult {
       unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.path.0..self.head.path.1]) };
 
     let query = {
-      let (_, query) = path.rsplit_once("?").unwrap_or(("", ""));
+      let (_, query) = path.split_once('?').unwrap_or(("", ""));
 
       query
         .to_owned()

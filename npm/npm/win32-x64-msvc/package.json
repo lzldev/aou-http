@@ -1,0 +1,21 @@
+{
+  "name": "@aou-http/server-win32-x64-msvc",
+  "version": "0.0.4",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "aou.win32-x64-msvc.node",
+  "files": [
+    "aou.win32-x64-msvc.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  },
+  "repository": {
+    "url": "https://github.com/lzldev/aou-http"
+  }
+}

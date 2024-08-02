@@ -1,0 +1,21 @@
+{
+  "name": "@aou-http/server-darwin-x64",
+  "version": "0.0.4",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "main": "aou.darwin-x64.node",
+  "files": [
+    "aou.darwin-x64.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  },
+  "repository": {
+    "url": "https://github.com/lzldev/aou-http"
+  }
+}

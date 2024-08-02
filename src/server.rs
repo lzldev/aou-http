@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
 
+use anyhow::anyhow;
+use matchit::Match;
 use napi::bindgen_prelude::*;
 use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
@@ -11,7 +13,9 @@ use napi_derive::napi;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tracing::debug;
 use tracing::error;
+use tracing_subscriber::EnvFilter;
 
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
@@ -43,6 +47,159 @@ impl AouServer {
       router: matchit::Router::new(),
       options,
     }
+  }
+
+  #[napi]
+  pub async fn listen(&self, host: String, port: u32) -> AouInstance {
+    let subscriber = tracing_subscriber::fmt()
+      .compact()
+      .with_env_filter(EnvFilter::from_default_env())
+      .with_line_number(true)
+      .with_file(true)
+      .with_target(false)
+      .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+      .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
+
+    let handlers = Arc::new(self.router.clone());
+    let handlers_cpy = handlers.clone();
+
+    let (sender, _receiver) = broadcast::channel::<()>(1024);
+
+    let addr = format!("{host}:{port}")
+      .parse::<SocketAddrV4>()
+      .expect("Invalid Server Address");
+
+    let listener = TcpListener::bind(&addr)
+      .await
+      .expect("Couldn't establish tcp connection");
+
+    tokio::spawn(async move {
+      let handlers = handlers;
+
+      loop {
+        let (mut stream, mut addr) = listener.accept().await.expect("Failed to accept socket");
+        let handlers = handlers.clone();
+
+        tokio::spawn(async move {
+          let mut req = request::handle_request((&mut stream, &mut addr)).await?;
+
+          let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
+                                                                                          //
+          let path = req.path().to_owned();
+          let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
+
+          let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
+            Some(_match) => _match,
+            None => {
+              debug!("Route not found {path}");
+              let res = Response {
+                status: Some(404),
+                ..Default::default()
+              };
+
+              res.write_to_stream(HashMap::new(), &mut stream).await?; //TODO: static headers.
+              stream.flush().await?;
+
+              return Err(anyhow!("Route Not Found"));
+            }
+          };
+
+          req.params = route
+            .params
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect();
+
+          let r = handler.call_async::<Promise<Response>>(req).await?;
+
+          let res: Response = r.await?;
+
+          res.write_to_stream(HashMap::new(), &mut stream).await?;
+          stream.flush().await?;
+
+          Ok::<(), anyhow::Error>(())
+        });
+      }
+    });
+
+    AouInstance {
+      ip: addr.ip().to_string(),
+      port: addr.port() as u32,
+      _router: handlers_cpy,
+      _options: self.options,
+      _sender: sender,
+    }
+  }
+
+  fn match_route<'r, 'f>(
+    router: &'r matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>,
+    route: &'r str,
+    method: HttpMethod,
+  ) -> Option<(
+    Match<'r, 'r, &'r Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>,
+    &'f ThreadsafeFunction<Request, ErrorStrategy::Fatal>,
+  )>
+  where
+    'r: 'f,
+  {
+    let route = match router.at(route) {
+      Ok(h) => h,
+      Err(_) => {
+        return None;
+      }
+    };
+
+    match (route.value.get_method(method), route.value.get_all()) {
+      (Some(r), _) => Some((route, r)),
+      (None, Some(r)) => Some((route, r)),
+      (None, None) => None,
+    }
+  }
+
+  fn insert_all(&mut self, route: String, function: JsFunction) {
+    let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
+      .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
+      .unwrap();
+
+    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
+    new_route.set_all(handler.clone());
+
+    match self.router.insert(route.as_str(), new_route) {
+      Ok(_) => (),
+      Err(_) => {
+        let entry = self.router.at_mut(route.as_str()).unwrap();
+        if entry.value.has_all() {
+          panic!("Tried to overwrite ALL at {}", route.as_str());
+        }
+        entry.value.set_all(handler)
+      }
+    }
+  }
+
+  fn insert_route(&mut self, route: String, method: HttpMethod, function: JsFunction) {
+    let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
+      .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
+      .unwrap();
+
+    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
+    new_route.set_method(method, handler.clone());
+
+    match self.router.insert(route.as_str(), new_route) {
+      Ok(_) => (),
+      Err(_) => {
+        let entry = self.router.at_mut(route.as_str()).unwrap();
+        if entry.value.has_method(method) {
+          panic!(
+            "Tried to overwrite method {} at {}",
+            method.to_str(),
+            route.as_str()
+          );
+        }
+        entry.value.set_method(method, handler)
+      }
+    };
   }
 
   #[napi(ts_args_type = "route:void,handler:void")]
@@ -104,132 +261,10 @@ impl AouServer {
     self.insert_all(route, handler);
     Ok(())
   }
-
-  fn insert_all(&mut self, route: String, function: JsFunction) {
-    let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
-      .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
-      .unwrap();
-
-    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
-    new_route.set_all(handler.clone());
-
-    match self.router.insert(route.as_str(), new_route) {
-      Ok(_) => (),
-      Err(_) => {
-        let entry = self.router.at_mut(route.as_str()).unwrap();
-        if entry.value.has_all() {
-          panic!("Tried to overwrite ALL at {}", route.as_str());
-        }
-        entry.value.set_all(handler)
-      }
-    }
-  }
-
-  fn insert_route(&mut self, route: String, method: HttpMethod, function: JsFunction) {
-    let handler: ThreadsafeFunction<Request, ErrorStrategy::Fatal> = function
-      .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))
-      .unwrap();
-
-    let mut new_route = Route::<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>::default();
-    new_route.set_method(method, handler.clone());
-
-    match self.router.insert(route.as_str(), new_route) {
-      Ok(_) => (),
-      Err(_) => {
-        let entry = self.router.at_mut(route.as_str()).unwrap();
-        if entry.value.has_method(method) {
-          panic!(
-            "Tried to overwrite method {} at {}",
-            method.to_str(),
-            route.as_str()
-          );
-        }
-        entry.value.set_method(method, handler)
-      }
-    };
-  }
-
-  #[napi]
-  pub async fn listen(&self, host: String, port: u32) -> AouInstance {
-    let handlers = Arc::new(self.router.clone());
-    let handlers_cpy = handlers.clone();
-
-    let (sender, _receiver) = broadcast::channel::<()>(1024);
-
-    let addr = format!("{host}:{port}")
-      .parse::<SocketAddrV4>()
-      .expect("Invalid Server Address");
-
-    let listener = TcpListener::bind(&addr)
-      .await
-      .expect("Couldn't establish tcp connection");
-
-    tokio::spawn(async move {
-      let handlers = handlers;
-
-      loop {
-        let (mut stream, mut addr) = listener.accept().await.expect("Failed to accept socket");
-        let handlers = handlers.clone();
-
-        tokio::spawn(async move {
-          let mut req = request::handle_request((&mut stream, &mut addr)).await?;
-
-          let hc = req.path().to_owned();
-          let (l, _) = hc.split_once("?").unwrap_or((&hc, ""));
-
-          let route = match handlers.as_ref().at(l) {
-            Ok(h) => h,
-            Err(err) => {
-              error!("Couldn't find the handler {hc} -> {err}");
-              return Err(anyhow::anyhow!("Route not found"));
-            }
-          };
-
-          let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
-
-          let handler: Option<&ThreadsafeFunction<Request, ErrorStrategy::Fatal>> = {
-            match (route.value.get_method(method), route.value.get_all()) {
-              (Some(r), _) => Some(r),
-              (None, Some(r)) => Some(r),
-              (None, None) => None,
-            }
-          };
-
-          if let None = handler {
-            todo!("404");
-          }
-
-          let handler = handler.unwrap();
-
-          req.params = route
-            .params
-            .iter()
-            .map(|(k, v)| (k.to_owned(), v.to_owned()))
-            .collect();
-
-          let r = handler.call_async::<Promise<Response>>(req).await?;
-          let res: Response = r.await?;
-
-          res.write_to_stream(HashMap::new(), &mut stream).await?;
-          stream.flush().await?;
-
-          Ok::<(), anyhow::Error>(())
-        });
-      }
-    });
-
-    AouInstance {
-      ip: addr.ip().to_string(),
-      port: addr.port() as u32,
-      _router: handlers_cpy,
-      _options: self.options,
-      _sender: sender,
-    }
-  }
 }
 
 #[napi(object)]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct AouOptions {
-  pub json: Option<bool>,
+  pub tracing: Option<bool>,
 }

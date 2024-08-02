@@ -3,12 +3,11 @@ import test, { registerCompletionHandler } from "ava";
 
 import { AouRequest, AouServer } from "../index.js";
 
-let initial_port = 7070;
+const [addr, port] = ["0.0.0.0", 7070];
 
-test("setup server and send request", async (test) => {
-  let server = new AouServer();
-
-  test.truthy(server);
+let server;
+test.before("setup server", async () => {
+  server = new AouServer();
 
   server.get("/route/{file}", async (req) => {
     const param = req.params.file;
@@ -24,15 +23,16 @@ test("setup server and send request", async (test) => {
     };
   });
 
+  const instance = await server.listen(addr, port);
+});
+
+test("req.params , req.query , req.header", async (t) => {
   const test_param = "f";
   const test_query = "test-query";
   const test_header = "test-header-body";
 
-  const [addr, port] = ["0.0.0.0", initial_port++];
-  const instance = await server.listen(addr, port);
-
   const res = await fetch(
-    `http://${addr}:${port}/route/${test_param}?query=${test_query}`,
+    `http://${addr}:${port}/route/${test_param}?test=12345?&query=${test_query}`,
     {
       headers: {
         "x-test-header": test_header,
@@ -42,21 +42,28 @@ test("setup server and send request", async (test) => {
 
   const body = await res.json();
 
-  test.is(res.status, 200);
+  t.is(res.status, 200);
 
-  test.truthy(body);
-  test.is(body.param, test_param);
-  test.is(body.query, test_query);
-  test.is(body.header, test_header);
+  t.truthy(body);
+  t.is(body.param, test_param);
+  t.is(body.query, test_query);
+  t.is(body.header, test_header);
 });
 
-test("requests parsing", async (test) => {
+test("404", async (t) => {
+  const not_found_res = await fetch(`http://${addr}:${port}/invalid-route`);
+
+  t.is(not_found_res.status, 404);
+  t.is(not_found_res.statusText, "Not Found");
+});
+
+test("request parsing", async (t) => {
   const request = AouRequest.fromString(
     `GET / HTTP/1.1\r\nHost: localhost:7070\r\nContent-Length: 25\r\n\r\n`
   );
 
-  test.is(request.method, "GET");
-  test.is(request.path, "/");
+  t.is(request.method, "GET");
+  t.is(request.path, "/");
 });
 
 registerCompletionHandler(() => process.exit(0));
