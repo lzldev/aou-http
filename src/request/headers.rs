@@ -1,5 +1,3 @@
-use core::str;
-
 use crate::utils::range_from_subslice;
 
 use super::VecOffset;
@@ -70,8 +68,6 @@ impl RequestHeaderParser {
 
 #[cfg(test)]
 mod unit_tests {
-  use core::str;
-
   use crate::request::{HeaderParseError, RequestHeaderParser, RequestParser};
 
   #[tokio::test]

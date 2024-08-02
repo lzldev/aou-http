@@ -17,6 +17,7 @@ napi = { version = "2.12.2", default-features = false, features = [
     "napi4",
     "tokio_rt",
     "serde-json",
+    "anyhow",
 ] }
 napi-derive = "2.12.2"
 serde = { version = "1.0.199", features = ["derive"] }

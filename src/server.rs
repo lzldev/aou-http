@@ -13,7 +13,6 @@ use napi::JsFunction;
 use napi_derive::napi;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
 use tracing::debug;
 use tracing::error;
 use tracing_subscriber::EnvFilter;
@@ -30,7 +29,6 @@ pub struct AouInstance {
   pub port: u32,
   _options: AouOptions,
   _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
-  _sender: broadcast::Sender<()>,
 }
 
 #[napi]
@@ -66,8 +64,6 @@ impl AouServer {
 
     let handlers = Arc::new(self.router.clone());
     let handlers_cpy = handlers.clone();
-
-    let (sender, _receiver) = broadcast::channel::<()>(1024);
 
     let addr = format!("{host}:{port}")
       .parse::<SocketAddrV4>()
@@ -173,7 +169,6 @@ impl AouServer {
       port: addr.port() as u32,
       _router: handlers_cpy,
       _options: self.options,
-      _sender: sender,
     }
   }
 

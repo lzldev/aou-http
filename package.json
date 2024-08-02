@@ -27,6 +27,13 @@
   "engines": {
     "node": ">= 10"
   },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "package.json",
+    "index.js",
+    "index.d.ts"
+  ],
   "scripts": {
     "artifacts": "napi artifacts",
     "build:local": "napi build --platform && yarn types:extend",
