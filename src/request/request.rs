@@ -46,12 +46,12 @@ impl Request {
     let parse = ParserResult::parse_request(
       Vec::from(request.as_bytes()),
       super::ParserState::Start { read_until: None },
-    )
-    .unwrap();
+    );
 
     let req = match parse {
-      super::RequestParseResponse::Success(p) => p.into_request(),
-      super::RequestParseResponse::Incomplete(_) => panic!(),
+      super::RequestParseResult::Success(p) => p.into_request(),
+      super::RequestParseResult::Incomplete(_) => panic!(),
+      super::RequestParseResult::Invalid(reason) => panic!("Failed to parse: {reason}"),
     };
 
     req

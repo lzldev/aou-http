@@ -1,3 +1,4 @@
+use std::any;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::SocketAddrV4;
@@ -12,11 +13,11 @@ use napi::JsFunction;
 use napi_derive::napi;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
 use tracing::debug;
 use tracing::error;
 use tracing_subscriber::EnvFilter;
 
+use crate::error::AouError;
 use crate::methods::HttpMethod;
 use crate::request::{self, Request};
 use crate::response::Response;
@@ -28,7 +29,6 @@ pub struct AouInstance {
   pub port: u32,
   _options: AouOptions,
   _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
-  _sender: broadcast::Sender<()>,
 }
 
 #[napi]
@@ -65,8 +65,6 @@ impl AouServer {
     let handlers = Arc::new(self.router.clone());
     let handlers_cpy = handlers.clone();
 
-    let (sender, _receiver) = broadcast::channel::<()>(1024);
-
     let addr = format!("{host}:{port}")
       .parse::<SocketAddrV4>()
       .expect("Invalid Server Address");
@@ -79,11 +77,17 @@ impl AouServer {
       let handlers = handlers;
 
       loop {
-        let (mut stream, mut addr) = listener.accept().await.expect("Failed to accept socket");
+        let (mut stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
         let handlers = handlers.clone();
 
         tokio::spawn(async move {
-          let mut req = request::handle_request((&mut stream, &mut addr)).await?;
+          let mut req = match request::handle_request(&mut stream).await {
+            Ok(req) => req,
+            Err(err) => {
+              error!("Error Handling Request {err}");
+              return Err(err);
+            }
+          };
 
           let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
                                                                                           //
@@ -99,7 +103,7 @@ impl AouServer {
                 ..Default::default()
               };
 
-              res.write_to_stream(HashMap::new(), &mut stream).await?; //TODO: static headers.
+              res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
               stream.flush().await?;
 
               return Err(anyhow!("Route Not Found"));
@@ -114,9 +118,45 @@ impl AouServer {
 
           let r = handler.call_async::<Promise<Response>>(req).await?;
 
-          let res: Response = r.await?;
+          let res: Response = match r.await {
+            Ok(r) => r,
+            Err(err) => {
+              let err: napi::Error = err;
 
-          res.write_to_stream(HashMap::new(), &mut stream).await?;
+              let is_aou_error = err
+                .reason
+                .starts_with("AouError: ")
+                .then(|| &err.reason[10..]);
+
+              match is_aou_error {
+                Some(reason) => {
+                  debug!("AouMessage: {reason}");
+                  let err = serde_json::from_str::<AouError>(reason).unwrap();
+                  error!("AouError: {err:?}");
+
+                  <AouError as Into<Response>>::into(err)
+                    .write_to_stream(&mut stream, &HashMap::new())
+                    .await?;
+                }
+                None => {
+                  //TODO: Return Error on request based on config.
+                  error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
+                  Response {
+                    status: Some(500),
+                    body: serde_json::Value::String(err.reason),
+                    status_message: None,
+                    headers: None,
+                  }
+                  .write_to_stream(&mut stream, &HashMap::new())
+                  .await?;
+                }
+              };
+
+              return Err(anyhow!("505"));
+            }
+          };
+
+          res.write_to_stream(&mut stream, &HashMap::new()).await?;
           stream.flush().await?;
 
           Ok::<(), anyhow::Error>(())
@@ -129,7 +169,6 @@ impl AouServer {
       port: addr.port() as u32,
       _router: handlers_cpy,
       _options: self.options,
-      _sender: sender,
     }
   }
 

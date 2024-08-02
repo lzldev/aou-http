@@ -68,8 +68,6 @@ impl RequestHeaderParser {
 
 #[cfg(test)]
 mod unit_tests {
-  use core::str;
-
   use crate::request::{HeaderParseError, RequestHeaderParser, RequestParser};
 
   #[tokio::test]
@@ -93,8 +91,6 @@ mod unit_tests {
 
     let (_, value) = parser.1.iter().nth(1).unwrap();
     let header_value = &buf[value.0..value.1];
-
-    dbg!(str::from_utf8(header_value).unwrap());
 
     assert_eq!(
       header_value, b"new_header",
@@ -139,6 +135,24 @@ mod unit_tests {
 
   #[tokio::test]
   async fn request_without_host_is_invalid() {
+    let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+    let lines = RequestParser::split_buf_lines(buf);
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let err = parser.unwrap_err();
+
+    assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
+
+    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+    let lines = RequestParser::split_buf_lines(buf);
+
+    let parser = RequestHeaderParser::parse_headers(buf, lines);
+
+    assert!(parser.is_ok(), "should be Valid {parser:?}");
+  }
+
+  #[tokio::test]
+  async fn request_with_server_123() {
     let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 

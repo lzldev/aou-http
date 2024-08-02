@@ -4,7 +4,6 @@ use crate::{
   request::{HeaderParseError, RequestHeaderParser},
   utils::range_from_subslice,
 };
-use anyhow::anyhow;
 
 use super::{Request, RequestHead, RequestHeaders, VecOffset};
 
@@ -60,9 +59,30 @@ impl ParserState {
 }
 
 #[derive(Debug)]
-pub enum RequestParseResponse {
+pub enum RequestParseResult {
   Success(ParserResult),
   Incomplete((Vec<u8>, ParserState)),
+  Invalid(String),
+}
+impl RequestParseResult {
+  pub fn is_incomplete(&self) -> bool {
+    match self {
+      RequestParseResult::Incomplete(_) => true,
+      _ => false,
+    }
+  }
+  pub fn is_success(&self) -> bool {
+    match self {
+      RequestParseResult::Success(_) => true,
+      _ => false,
+    }
+  }
+  pub fn is_invalid(&self) -> bool {
+    match self {
+      RequestParseResult::Invalid(_) => true,
+      _ => false,
+    }
+  }
 }
 
 impl ParserResult {
@@ -91,10 +111,7 @@ impl ParserResult {
     );
   }
 
-  pub fn parse_request(
-    buf: Vec<u8>,
-    state: ParserState,
-  ) -> Result<RequestParseResponse, anyhow::Error> {
+  pub fn parse_request(buf: Vec<u8>, _state: ParserState) -> RequestParseResult {
     let buf_len = buf.len();
     let mut offset: usize = 0;
 
@@ -105,17 +122,13 @@ impl ParserResult {
         offset = offset + size;
         head
       }
-      Err(e) => {
-        if offset == state.read_until() {
-          return Err(e);
-        }
-
-        return Ok(RequestParseResponse::Incomplete((
+      Err(_) => {
+        return RequestParseResult::Incomplete((
           buf,
           ParserState::Start {
             read_until: Some(buf_len),
           },
-        )));
+        ));
       }
     };
 
@@ -124,31 +137,32 @@ impl ParserResult {
         offset = offset + size;
         headers
       }
-      Err(HeaderParseError::Incomplete) => {
-        return Ok(RequestParseResponse::Incomplete((
+      Err(HeaderParseError::Incomplete) | Err(HeaderParseError::Invalid) => {
+        return RequestParseResult::Incomplete((
           buf,
           ParserState::Head {
             cursor: offset,
             read_until: buf_len,
             head,
           },
-        )));
+        ));
       }
-      Err(HeaderParseError::NoHost) => return Err(anyhow!("Host Header not present")),
-      Err(HeaderParseError::Invalid) => return Err(anyhow!("Invalid Headers")),
+      Err(HeaderParseError::NoHost) => {
+        return RequestParseResult::Invalid("Invalid Headers".into())
+      }
     };
 
     let buf_len = buf.len();
 
     if offset >= buf_len {
-      return Ok(RequestParseResponse::Incomplete((
+      return RequestParseResult::Incomplete((
         buf,
         ParserState::Head {
           cursor: offset,
           read_until: buf_len,
           head,
         },
-      )));
+      ));
     }
 
     //TODO:This means only the header has been read.
@@ -170,13 +184,25 @@ impl ParserResult {
       body,
     };
 
-    Ok(RequestParseResponse::Success(req))
+    RequestParseResult::Success(req)
   }
 }
 
 #[cfg(test)]
 mod unit_tests {
-  use crate::request::{ParserResult, ParserState, RequestParseResponse};
+  use crate::request::{ParserResult, ParserState};
+
+  #[tokio::test]
+  async fn parser_invalid_header_error() {
+    let buf = b"GET /server_error123 HTTP/1.1\r\nHost: localhost:7070\r\nUser-Agent:";
+
+    let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
+
+    assert!(
+      !parse.is_success(),
+      "Parser should return a Invalid Header Error"
+    );
+  }
   #[tokio::test]
   async fn invalid_http_version() {
     let buf =
@@ -185,7 +211,7 @@ mod unit_tests {
     let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
 
     assert!(
-      parse.is_err(),
+      !parse.is_success(),
       "Parse should return a Invalid HTTP Version Error Result"
     );
   }
@@ -197,7 +223,7 @@ mod unit_tests {
 
     let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
 
-    assert!(parse.is_err(), "Parse should return a Invalid HEADER");
+    assert!(!parse.is_success(), "Parse should return a Invalid HEADER");
   }
 
   #[tokio::test]
@@ -208,17 +234,8 @@ mod unit_tests {
     let parse = ParserResult::parse_request(buf.into(), ParserState::Start { read_until: None });
 
     assert!(
-      parse.is_ok(),
-      "Parse should not error since it's not sure it's the end of the headers."
-    ); //Check the spec for spaces in header names
-
-    let parse = parse.unwrap();
-
-    let is_incomplete = match parse {
-      RequestParseResponse::Incomplete(_) => true,
-      RequestParseResponse::Success(_) => false,
-    };
-
-    assert!(is_incomplete, "Parser should return a Incomplete result");
+      parse.is_incomplete(),
+      "Parse should return incomplete since it's not sure it's the end of the headers"
+    );
   }
 }
