@@ -262,7 +262,9 @@ where
           ..Default::default()
         };
 
-        res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
+        res
+          .into_write_to_stream(&mut stream, &HashMap::new())
+          .await?; //TODO: static headers.
         stream.flush().await?;
 
         return Err(anyhow!("Route Not Found"));
@@ -294,7 +296,7 @@ where
             error!("AouError: {err:?}");
 
             <AouError as Into<Response>>::into(err)
-              .write_to_stream(&mut stream, &HashMap::new())
+              .into_write_to_stream(&mut stream, &HashMap::new())
               .await?;
           }
           None => {
@@ -302,11 +304,11 @@ where
             error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
             Response {
               status: Some(500),
-              body: serde_json::Value::String(err.reason),
+              body: Either::A(err.reason),
               status_message: None,
               headers: None,
             }
-            .write_to_stream(&mut stream, &HashMap::new())
+            .into_write_to_stream(&mut stream, &HashMap::new())
             .await?;
           }
         };
@@ -315,7 +317,9 @@ where
       }
     };
 
-    res.write_to_stream(&mut stream, &HashMap::new()).await?;
+    res
+      .into_write_to_stream(&mut stream, &HashMap::new())
+      .await?;
     stream.flush().await?;
 
     if should_close {

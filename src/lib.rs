@@ -1,3 +1,5 @@
+use napi::bindgen_prelude::*;
+
 #[macro_use]
 extern crate napi_derive;
 
