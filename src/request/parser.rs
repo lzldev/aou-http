@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
-  request::{HeaderParseError, RequestHeaderParser},
+  request::{HeaderParseError, HeaderParserResult, RequestHeaderParser},
   utils::range_from_subslice,
 };
 
-use super::{Request, RequestHead, RequestHeaders, VecOffset};
+use super::{options::HeaderOptions, Request, RequestHead, RequestHeaders, VecOffset};
 
 pub struct RequestParser;
 impl RequestParser {
@@ -20,6 +20,7 @@ pub struct ParserResult {
   pub head: RequestHead,
   pub headers: RequestHeaders,
   pub body: VecOffset,
+  pub header_options: HeaderOptions,
 }
 
 #[derive(Debug)]
@@ -132,10 +133,14 @@ impl ParserResult {
       }
     };
 
-    let headers = match RequestHeaderParser::parse_headers(&buf, lines) {
-      Ok((size, headers)) => {
+    let (headers, header_options) = match RequestHeaderParser::parse_headers(&buf, lines) {
+      Ok(HeaderParserResult {
+        size,
+        headers,
+        options,
+      }) => {
         offset = offset + size;
-        headers
+        (headers, options)
       }
       Err(HeaderParseError::Incomplete) | Err(HeaderParseError::Invalid) => {
         return RequestParseResult::Incomplete((
@@ -182,6 +187,7 @@ impl ParserResult {
       head,
       headers,
       body,
+      header_options,
     };
 
     RequestParseResult::Success(req)

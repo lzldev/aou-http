@@ -1,6 +1,9 @@
 use crate::utils::range_from_subslice;
 
-use super::VecOffset;
+use super::{
+  options::{Connection, HeaderOptions},
+  VecOffset,
+};
 
 pub type RequestHeaderVec = (VecOffset, VecOffset);
 pub type RequestHeaders = Vec<RequestHeaderVec>;
@@ -12,21 +15,29 @@ pub enum HeaderParseError {
   NoHost,
 }
 
+#[derive(Debug)]
+pub struct HeaderParserResult {
+  pub size: usize,
+  pub headers: RequestHeaders,
+  pub options: HeaderOptions,
+}
+
 pub struct RequestHeaderParser;
 impl RequestHeaderParser {
   pub fn parse_headers<P>(
     buf: &[u8],
     lines: std::slice::Split<u8, P>,
-  ) -> Result<(usize, RequestHeaders), HeaderParseError>
+  ) -> Result<HeaderParserResult, HeaderParseError>
   where
     P: FnMut(&u8) -> bool,
   {
     let mut offset: usize = 0;
     let mut has_host = false;
+    let mut connection = Connection::KeepAlive;
 
     let header_lines = lines.take_while(|b| *b != b"" && *b != b"\r");
 
-    let mut headers_vec = Vec::new();
+    let mut headers = Vec::new();
 
     for header in header_lines {
       offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
@@ -46,15 +57,19 @@ impl RequestHeaderParser {
 
       if has_host == false && header.eq_ignore_ascii_case(b"host") {
         has_host = true;
+      } else if header.eq_ignore_ascii_case(b"connection")
+        && value.eq_ignore_ascii_case(b" close\r\n")
+      {
+        connection = Connection::Close
       }
 
       let header = range_from_subslice(buf, header);
       let value = range_from_subslice(buf, &value[1..value.len() - 1]);
 
-      headers_vec.push((header, value))
+      headers.push((header, value))
     }
 
-    if headers_vec.len() == 0 {
+    if headers.len() == 0 {
       return Err(HeaderParseError::Incomplete);
     }
 
@@ -62,13 +77,17 @@ impl RequestHeaderParser {
       return Err(HeaderParseError::NoHost);
     }
 
-    Ok((offset, headers_vec))
+    Ok(HeaderParserResult {
+      headers,
+      size: offset,
+      options: HeaderOptions { connection },
+    })
   }
 }
 
 #[cfg(test)]
 mod unit_tests {
-  use crate::request::{HeaderParseError, RequestHeaderParser, RequestParser};
+  use crate::request::{HeaderParseError, HeaderParserResult, RequestHeaderParser, RequestParser};
 
   #[tokio::test]
   async fn regular_request_headers() {
@@ -76,9 +95,9 @@ mod unit_tests {
     let lines = RequestParser::split_buf_lines(buf);
 
     let parser = RequestHeaderParser::parse_headers(buf, lines);
-    let (offset, headers) = parser.unwrap();
+    let HeaderParserResult { size, headers, .. } = parser.unwrap();
 
-    assert_eq!(offset, 89, "Invalid Offset");
+    assert_eq!(size, 89, "Invalid Offset");
     assert_eq!(headers.len(), 3, "Invalid amount of headers parsed");
   }
 
@@ -87,9 +106,10 @@ mod unit_tests {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines).unwrap();
+    let HeaderParserResult { headers, .. } =
+      RequestHeaderParser::parse_headers(buf, lines).unwrap();
 
-    let (_, value) = parser.1.iter().nth(1).unwrap();
+    let (_, value) = headers.iter().nth(1).unwrap();
     let header_value = &buf[value.0..value.1];
 
     assert_eq!(

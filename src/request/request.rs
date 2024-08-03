@@ -1,7 +1,7 @@
 use core::str;
 use std::collections::{BTreeMap, HashMap};
 
-use super::{ParserResult, RequestHead, RequestHeaders, VecOffset};
+use super::{options::Connection, ParserResult, RequestHead, RequestHeaders, VecOffset};
 
 use napi_derive::napi;
 use serde_json::Map;
@@ -18,6 +18,22 @@ pub struct Request {
   #[napi(ts_type = "{}")]
   pub params: HashMap<String, String>,
   pub query: HashMap<String, String>,
+  connection: Connection, // TODO: Make this the Request Options struct
+}
+
+impl Default for Request {
+  fn default() -> Self {
+    Self {
+      buf: Default::default(),
+      head: Default::default(),
+      headers: Default::default(),
+      body: Default::default(),
+      context: Default::default(),
+      params: Default::default(),
+      query: Default::default(),
+      connection: Connection::KeepAlive,
+    }
+  }
 }
 
 #[napi]
@@ -38,6 +54,7 @@ impl Request {
       context: serde_json::Value::Object(Map::new()),
       params,
       query,
+      ..Default::default()
     }
   }
 
@@ -92,5 +109,9 @@ impl Request {
   #[napi(getter)]
   pub fn body(&self) -> &str {
     unsafe { std::str::from_utf8_unchecked(&self.buf[self.body.0..self.body.1]) }
+  }
+
+  pub fn get_connection(&self) -> &Connection {
+    &self.connection
   }
 }

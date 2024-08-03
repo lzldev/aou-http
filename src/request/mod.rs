@@ -1,10 +1,12 @@
 mod head;
 mod headers;
+mod options;
 mod parser;
 mod request;
 
 pub use head::*;
 pub use headers::*;
+pub use options::*;
 pub use parser::*;
 pub use request::*;
 

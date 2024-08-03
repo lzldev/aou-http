@@ -21,6 +21,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::error::AouError;
 use crate::methods::HttpMethod;
+use crate::request::Connection;
 use crate::request::{self, Request};
 use crate::response::Response;
 use crate::route::Route;
@@ -31,6 +32,12 @@ pub struct AouInstance {
   pub port: u32,
   _options: AouOptions,
   _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
+}
+
+#[napi(object)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AouOptions {
+  pub tracing: Option<bool>,
 }
 
 #[napi]
@@ -224,96 +231,98 @@ impl AouServer {
   }
 }
 
-#[napi(object)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct AouOptions {
-  pub tracing: Option<bool>,
-}
-
-pub async fn handle_connection<T>(
-  mut stream: T,
+pub async fn handle_connection<TStream>(
+  mut stream: TStream,
   handlers: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
 ) -> anyhow::Result<()>
 where
-  T: AsyncRead + AsyncWrite + Unpin,
+  TStream: AsyncRead + AsyncWrite + Unpin,
 {
-  let mut req = match request::handle_request(&mut stream).await {
-    Ok(req) => req,
-    Err(err) => {
-      error!("Error Handling Request {err}");
-      return Err(err);
-    }
-  };
+  loop {
+    let mut req = match request::handle_request(&mut stream).await {
+      Ok(req) => req,
+      Err(err) => {
+        error!("Error Handling Request {err}");
+        return Err(err);
+      }
+    };
 
-  let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
-                                                                                  //
-  let path = req.path().to_owned();
-  let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
+    let should_close = req.get_connection() == &Connection::Close;
+    let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
+                                                                                    //
+    let path = req.path().to_owned();
+    let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
 
-  let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
-    Some(_match) => _match,
-    None => {
-      debug!("Route not found {path}");
-      let res = Response {
-        status: Some(404),
-        ..Default::default()
-      };
+    let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
+      Some(_match) => _match,
+      None => {
+        debug!("Route not found {path}");
+        let res = Response {
+          status: Some(404),
+          ..Default::default()
+        };
 
-      res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
-      stream.flush().await?;
+        res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
+        stream.flush().await?;
 
-      return Err(anyhow!("Route Not Found"));
-    }
-  };
+        return Err(anyhow!("Route Not Found"));
+      }
+    };
 
-  req.params = route
-    .params
-    .iter()
-    .map(|(k, v)| (k.to_owned(), v.to_owned()))
-    .collect();
+    req.params = route
+      .params
+      .iter()
+      .map(|(k, v)| (k.to_owned(), v.to_owned()))
+      .collect();
 
-  let r = handler.call_async::<Promise<Response>>(req).await?;
+    let r = handler.call_async::<Promise<Response>>(req).await?;
 
-  let res: Response = match r.await {
-    Ok(r) => r,
-    Err(err) => {
-      let err: napi::Error = err;
+    let res: Response = match r.await {
+      Ok(r) => r,
+      Err(err) => {
+        let err: napi::Error = err;
 
-      let is_aou_error = err
-        .reason
-        .starts_with("AouError: ")
-        .then(|| &err.reason[10..]);
+        let is_aou_error = err
+          .reason
+          .starts_with("AouError: ")
+          .then(|| &err.reason[10..]);
 
-      match is_aou_error {
-        Some(reason) => {
-          debug!("AouMessage: {reason}");
-          let err = serde_json::from_str::<AouError>(reason).unwrap();
-          error!("AouError: {err:?}");
+        match is_aou_error {
+          Some(reason) => {
+            debug!("AouMessage: {reason}");
+            let err = serde_json::from_str::<AouError>(reason).unwrap();
+            error!("AouError: {err:?}");
 
-          <AouError as Into<Response>>::into(err)
+            <AouError as Into<Response>>::into(err)
+              .write_to_stream(&mut stream, &HashMap::new())
+              .await?;
+          }
+          None => {
+            //TODO: Return Error on request based on config.
+            error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
+            Response {
+              status: Some(500),
+              body: serde_json::Value::String(err.reason),
+              status_message: None,
+              headers: None,
+            }
             .write_to_stream(&mut stream, &HashMap::new())
             .await?;
-        }
-        None => {
-          //TODO: Return Error on request based on config.
-          error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
-          Response {
-            status: Some(500),
-            body: serde_json::Value::String(err.reason),
-            status_message: None,
-            headers: None,
           }
-          .write_to_stream(&mut stream, &HashMap::new())
-          .await?;
-        }
-      };
+        };
 
-      return Err(anyhow!("505"));
+        return Err(anyhow!("505"));
+      }
+    };
+
+    res.write_to_stream(&mut stream, &HashMap::new()).await?;
+    stream.flush().await?;
+
+    if should_close {
+      debug!("Closing Connection");
+      break;
     }
-  };
-
-  res.write_to_stream(&mut stream, &HashMap::new()).await?;
-  stream.flush().await?;
-
+  }
+  debug!("Closing connection");
   Ok::<(), anyhow::Error>(())
 }
