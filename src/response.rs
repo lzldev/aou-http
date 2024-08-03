@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use tokio::{io::AsyncWriteExt, net::TcpStream};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 #[napi(object, js_name = "AouResponse")]
 #[derive(Debug)]
@@ -24,11 +24,14 @@ impl Default for Response {
 }
 
 impl Response {
-  pub async fn write_to_stream(
+  pub async fn write_to_stream<TStream>(
     &self,
-    stream: &mut TcpStream,
+    stream: &mut TStream,
     static_headers: &HashMap<String, String>,
-  ) -> Result<(), anyhow::Error> {
+  ) -> Result<(), anyhow::Error>
+  where
+    TStream: AsyncRead + AsyncWrite + Unpin,
+  {
     let status = self.status.unwrap_or(200);
     let status_message = self
       .status_message
