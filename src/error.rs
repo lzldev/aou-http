@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use napi::bindgen_prelude::Either4;
 use serde::Deserialize;
 
 use crate::response::Response;
@@ -19,9 +18,10 @@ impl Into<Response> for AouError {
   fn into(self) -> Response {
     Response {
       status: self.status.or(Some(400)),
-      body: Either4::D(self.body.to_string()),
+      body: self.body,
       headers: self.headers,
       status_message: self.status_message,
+      ..Default::default()
     }
   }
 }

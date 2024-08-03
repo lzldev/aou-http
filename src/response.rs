@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use napi::bindgen_prelude::{Buffer, Either4, Null};
+use napi::bindgen_prelude::Buffer;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 #[napi(object, js_name = "AouResponse")]
@@ -9,8 +9,9 @@ pub struct Response {
   #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
   pub headers: Option<HashMap<String, String>>,
-  #[napi(ts_type = "Buffer | string | object | null")]
-  pub body: Either4<Buffer, serde_json::Value, Null, String>,
+  #[napi(ts_type = "any | null")]
+  pub body: serde_json::Value,
+  pub buffer: Option<Buffer>,
 }
 
 unsafe impl Sync for Response {}
@@ -22,55 +23,13 @@ impl Default for Response {
       status: None,
       status_message: None,
       headers: Default::default(),
-      body: Either4::C(Null::default()),
+      body: serde_json::Value::Null,
+      buffer: None,
     }
   }
 }
 
 impl Response {
-  pub async fn into_write_to_stream<TStream>(
-    self,
-    stream: &mut TStream,
-    static_headers: &HashMap<String, String>,
-  ) -> anyhow::Result<()>
-  where
-    TStream: AsyncRead + AsyncWrite + Unpin,
-  {
-    let status = self.status.unwrap_or(200);
-    let status_message = self
-      .status_message
-      .as_ref()
-      .map(|f| f.as_str())
-      .or(Response::status_message(status))
-      .unwrap_or("");
-
-    let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
-    let headers = self.headers.as_ref().unwrap_or(&empty_headers);
-
-    let holder: String;
-
-    let body_buf: &[u8] = match &self.body {
-      Either4::A(buf) => buf,
-      Either4::B(obj) => {
-        holder = obj.to_string();
-        holder.as_bytes()
-      } //TODO
-      Either4::C(_) => &Vec::new(),      //TODO
-      Either4::D(str) => str.as_bytes(), //TODO
-    };
-
-    let content_length = body_buf.len();
-    let headers_buf = Self::headers_buf(content_length, static_headers, headers);
-
-    stream
-      .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n").as_bytes())
-      .await?;
-
-    stream.write_all(body_buf).await?;
-
-    Ok(())
-  }
-
   pub async fn write_to_stream<TStream>(
     &self,
     stream: &mut TStream,
@@ -90,26 +49,30 @@ impl Response {
     let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
     let headers = self.headers.as_ref().unwrap_or(&empty_headers);
 
-    let holder: String;
+    if self.buffer.is_some() {
+      let buf: &[u8] = self.buffer.as_ref().unwrap();
+      let content_length = buf.len();
 
-    let body_buf: &[u8] = match &self.body {
-      Either4::A(buf) => buf,
-      Either4::B(obj) => {
-        holder = obj.to_string();
-        holder.as_bytes()
-      } //TODO
-      Either4::C(_) => &Vec::new(),      //TODO
-      Either4::D(str) => str.as_bytes(), //TODO
-    };
+      let headers_buf = Self::headers_buf(content_length, static_headers, headers);
+      stream
+        .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n",).as_bytes())
+        .await?;
 
-    let content_length = body_buf.len();
-    let headers_buf = Self::headers_buf(content_length, static_headers, headers);
+      stream.write_all(buf).await?;
+    } else {
+      let body_buf = match &self.body {
+        serde_json::Value::String(str) => str.to_owned(),
+        _ => (&self).body.to_string(),
+      };
+      let content_length = body_buf.len();
+      let headers_buf = Self::headers_buf(content_length, static_headers, headers);
 
-    stream
-      .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n").as_bytes())
-      .await?;
-
-    stream.write_all(body_buf).await?;
+      stream
+        .write_all(
+          format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n{body_buf}",).as_bytes(),
+        )
+        .await?;
+    }
 
     Ok(())
   }
