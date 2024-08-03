@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tracing::debug;
 use tracing::error;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::AouError;
@@ -253,6 +254,8 @@ where
     let path = req.path().to_owned();
     let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
 
+    info!("{method} {path}");
+
     let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
       Some(_match) => _match,
       None => {
@@ -320,6 +323,7 @@ where
     res
       .into_write_to_stream(&mut stream, &HashMap::new())
       .await?;
+
     stream.flush().await?;
 
     if should_close {

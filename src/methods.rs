@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug, Clone, Copy)]
 pub enum HttpMethod {
   GET,
@@ -14,6 +16,11 @@ pub enum HttpMethod {
 #[derive(Debug)]
 pub enum HttpMethodError {
   InvalidMethod,
+}
+impl Display for HttpMethod {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.to_str())
+  }
 }
 
 impl HttpMethod {

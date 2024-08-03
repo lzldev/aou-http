@@ -13,7 +13,7 @@ export interface AouResponse {
   status?: number
   statusMessage?: Record<string,string>
   headers?: Record<string, string>
-  body: any
+  body: string | Buffer
 }
 export interface AouOptions {
   tracing?: boolean

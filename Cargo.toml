@@ -12,13 +12,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.82"
-# Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
 napi = { version = "2.12.2", default-features = false, features = [
+    "full",
     "napi4",
     "tokio_rt",
     "serde-json",
+    "error_anyhow",
     "anyhow",
-] }
+] } # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
 napi-derive = "2.12.2"
 serde = { version = "1.0.199", features = ["derive"] }
 serde_json = { version = "1.0.116" }

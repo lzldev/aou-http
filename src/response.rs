@@ -1,9 +1,6 @@
-use std::{
-  collections::{HashMap, HashSet},
-  sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
-use napi::Either;
+use napi::bindgen_prelude::{Buffer, Either};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 #[napi(object, js_name = "AouResponse")]
@@ -12,8 +9,11 @@ pub struct Response {
   #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
   pub headers: Option<HashMap<String, String>>,
-  pub body: Either<String, Vec<u8>>, // && Object
+  pub body: Either<String, Buffer>, // && Object
 }
+
+unsafe impl Sync for Response {}
+unsafe impl Send for Response {}
 
 impl Default for Response {
   fn default() -> Self {
