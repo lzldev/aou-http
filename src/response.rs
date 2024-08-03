@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use napi::bindgen_prelude::{Buffer, Either};
+use napi::bindgen_prelude::{Buffer, Either4, Null};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 #[napi(object, js_name = "AouResponse")]
@@ -9,7 +9,8 @@ pub struct Response {
   #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
   pub headers: Option<HashMap<String, String>>,
-  pub body: Either<String, Buffer>, // && Object
+  #[napi(ts_type = "Buffer | string | object | null")]
+  pub body: Either4<Buffer, serde_json::Value, Null, String>,
 }
 
 unsafe impl Sync for Response {}
@@ -21,7 +22,7 @@ impl Default for Response {
       status: None,
       status_message: None,
       headers: Default::default(),
-      body: Either::A(String::new()),
+      body: Either4::C(Null::default()),
     }
   }
 }
@@ -46,22 +47,26 @@ impl Response {
     let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
     let headers = self.headers.as_ref().unwrap_or(&empty_headers);
 
-    // let body_buf = Self::body_buf(&self.body);
-    let content_length = match &self.body {
-      Either::A(str) => str.len(),
-      Either::B(vec) => vec.len(),
+    let holder: String;
+
+    let body_buf: &[u8] = match &self.body {
+      Either4::A(buf) => buf,
+      Either4::B(obj) => {
+        holder = obj.to_string();
+        holder.as_bytes()
+      } //TODO
+      Either4::C(_) => &Vec::new(),      //TODO
+      Either4::D(str) => str.as_bytes(), //TODO
     };
 
+    let content_length = body_buf.len();
     let headers_buf = Self::headers_buf(content_length, static_headers, headers);
 
     stream
       .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n").as_bytes())
       .await?;
 
-    match &self.body {
-      Either::A(str) => stream.write_all(str.as_bytes()).await?,
-      Either::B(buf) => stream.write_all(buf).await?,
-    };
+    stream.write_all(body_buf).await?;
 
     Ok(())
   }
@@ -85,22 +90,26 @@ impl Response {
     let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
     let headers = self.headers.as_ref().unwrap_or(&empty_headers);
 
-    // let body_buf = Self::body_buf(&self.body);
-    let content_length = match &self.body {
-      Either::A(str) => str.len(),
-      Either::B(vec) => vec.len(),
+    let holder: String;
+
+    let body_buf: &[u8] = match &self.body {
+      Either4::A(buf) => buf,
+      Either4::B(obj) => {
+        holder = obj.to_string();
+        holder.as_bytes()
+      } //TODO
+      Either4::C(_) => &Vec::new(),      //TODO
+      Either4::D(str) => str.as_bytes(), //TODO
     };
 
+    let content_length = body_buf.len();
     let headers_buf = Self::headers_buf(content_length, static_headers, headers);
 
     stream
       .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n").as_bytes())
       .await?;
 
-    match &self.body {
-      Either::A(str) => stream.write_all(str.as_bytes()).await?,
-      Either::B(buf) => stream.write_all(buf).await?,
-    };
+    stream.write_all(body_buf).await?;
 
     Ok(())
   }

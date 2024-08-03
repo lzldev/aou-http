@@ -307,7 +307,7 @@ where
             error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
             Response {
               status: Some(500),
-              body: Either::A(err.reason),
+              body: Either4::C(Null::default()), //TODO: add reason
               status_message: None,
               headers: None,
             }
