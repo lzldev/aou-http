@@ -21,8 +21,8 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::AouError;
-use crate::methods::HttpMethod;
 use crate::request::Connection;
+use crate::request::HttpMethod;
 use crate::request::{self, Request};
 use crate::response::Response;
 use crate::route::Route;
@@ -89,6 +89,7 @@ impl AouServer {
       loop {
         let (stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
         let handlers = handlers.clone();
+        debug!("New Connection");
 
         tokio::spawn(async move { handle_connection(stream, handlers).await });
       }

@@ -5,8 +5,8 @@ use super::{
   VecOffset,
 };
 
-pub type RequestHeaderVec = (VecOffset, VecOffset);
 pub type RequestHeaders = Vec<RequestHeaderVec>;
+pub type RequestHeaderVec = (VecOffset, VecOffset);
 
 #[derive(Debug, PartialEq)]
 pub enum HeaderParseError {
@@ -22,8 +22,8 @@ pub struct HeaderParserResult {
   pub options: HeaderOptions,
 }
 
-pub struct RequestHeaderParser;
-impl RequestHeaderParser {
+pub struct HeaderParser;
+impl HeaderParser {
   pub fn parse_headers<P>(
     buf: &[u8],
     lines: std::slice::Split<u8, P>,
@@ -87,14 +87,14 @@ impl RequestHeaderParser {
 
 #[cfg(test)]
 mod unit_tests {
-  use crate::request::{HeaderParseError, HeaderParserResult, RequestHeaderParser, RequestParser};
+  use crate::request::{HeaderParseError, HeaderParser, HeaderParserResult, RequestParser};
 
   #[tokio::test]
   async fn regular_request_headers() {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
     let HeaderParserResult { size, headers, .. } = parser.unwrap();
 
     assert_eq!(size, 89, "Invalid Offset");
@@ -106,8 +106,7 @@ mod unit_tests {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let HeaderParserResult { headers, .. } =
-      RequestHeaderParser::parse_headers(buf, lines).unwrap();
+    let HeaderParserResult { headers, .. } = HeaderParser::parse_headers(buf, lines).unwrap();
 
     let (_, value) = headers.iter().nth(1).unwrap();
     let header_value = &buf[value.0..value.1];
@@ -123,7 +122,7 @@ mod unit_tests {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-s";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
     let err = parser.unwrap_err();
 
     assert_eq!(
@@ -138,7 +137,7 @@ mod unit_tests {
     let buf = b"x-random-header: new_header\r\nUser-Agent: chrome-someth";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
     let err = parser.unwrap_err();
 
     assert_ne!(
@@ -158,7 +157,7 @@ mod unit_tests {
     let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
     let err = parser.unwrap_err();
 
     assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
@@ -166,7 +165,7 @@ mod unit_tests {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
 
     assert!(parser.is_ok(), "should be Valid {parser:?}");
   }
@@ -176,7 +175,7 @@ mod unit_tests {
     let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
     let err = parser.unwrap_err();
 
     assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
@@ -184,7 +183,7 @@ mod unit_tests {
     let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
     let lines = RequestParser::split_buf_lines(buf);
 
-    let parser = RequestHeaderParser::parse_headers(buf, lines);
+    let parser = HeaderParser::parse_headers(buf, lines);
 
     assert!(parser.is_ok(), "should be Valid {parser:?}");
   }

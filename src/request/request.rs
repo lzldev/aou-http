@@ -1,7 +1,7 @@
 use core::str;
 use std::collections::{BTreeMap, HashMap};
 
-use super::{options::Connection, ParserResult, RequestHead, RequestHeaders, VecOffset};
+use super::{options::Connection, RequestHead, RequestHeaders, RequestParser, VecOffset};
 
 use napi_derive::napi;
 use serde_json::Map;
@@ -60,7 +60,7 @@ impl Request {
 
   #[napi(factory)]
   pub fn from_string(request: String) -> Self {
-    let parse = ParserResult::parse_request(
+    let parse = RequestParser::parse_request(
       Vec::from(request.as_bytes()),
       super::ParserState::Start { read_until: None },
     );

@@ -17,6 +17,7 @@ pub enum HttpMethod {
 pub enum HttpMethodError {
   InvalidMethod,
 }
+
 impl Display for HttpMethod {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.to_str())

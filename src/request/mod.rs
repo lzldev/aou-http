@@ -1,11 +1,13 @@
 mod head;
 mod headers;
+mod method;
 mod options;
 mod parser;
 mod request;
 
 pub use head::*;
 pub use headers::*;
+pub use method::*;
 pub use options::*;
 pub use parser::*;
 pub use request::*;
@@ -51,7 +53,7 @@ where
         continue;
       }
 
-      let parse = ParserResult::parse_request(taken, state);
+      let parse = RequestParser::parse_request(taken, state);
 
       let (new_buf, new_state) = match parse {
         ParserStatus::Incomplete(state) => state,

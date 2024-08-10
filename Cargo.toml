@@ -39,6 +39,7 @@ tokio = { version = "1.37.0", features = [
 ] }
 bytes = "1.6.0"
 matchit = "0.8.4"
+thiserror = "1.0.63"
 
 [build-dependencies]
 napi-build = "2.1.3"
