@@ -41,7 +41,7 @@ impl RequestHeaderParser {
 
     for header in header_lines {
       offset = offset.wrapping_add(header.len() + 1); // Add line size + \n to offset
-      let mut split = header.splitn(2, |b| b == &b':');
+      let mut split = header.splitn(2, |b| b == &b':'); // TODO: This could be &b': '
 
       let (header, value) = (
         split.next().ok_or(HeaderParseError::Incomplete)?,
@@ -61,7 +61,7 @@ impl RequestHeaderParser {
         && value.eq_ignore_ascii_case(b" close\r\n")
       {
         connection = Connection::Close
-      }
+      };
 
       let header = range_from_subslice(buf, header);
       let value = range_from_subslice(buf, &value[1..value.len() - 1]);

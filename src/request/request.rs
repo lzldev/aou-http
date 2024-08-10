@@ -66,9 +66,9 @@ impl Request {
     );
 
     let req = match parse {
-      super::RequestParseResult::Success(p) => p.into_request(),
-      super::RequestParseResult::Incomplete(_) => panic!(),
-      super::RequestParseResult::Invalid(reason) => panic!("Failed to parse: {reason}"),
+      super::ParserStatus::Success(p) => p.into_request(),
+      super::ParserStatus::Incomplete(_) => panic!(),
+      super::ParserStatus::Invalid(reason) => panic!("Failed to parse: {reason}"),
     };
 
     req
