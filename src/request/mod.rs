@@ -15,7 +15,7 @@ pub use request::*;
 type VecOffset = (usize, usize);
 
 use anyhow::anyhow;
-use tracing::{debug, error};
+use tracing::error;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 
@@ -40,28 +40,31 @@ where
           }
         },
         _ = tokio::time::sleep(tokio::time::Duration::from_millis(200)) => {
+          if state.is_body() {
+            break Ok(state.into_parser_result(taken)?);
+          }
+
           break Err(anyhow!("Connection timeout"))
         }
       };
 
-      dbg!(iter, read);
       let buf_len = taken.len();
 
-      if buf_len == 0 && read == 0 {
+      if read == 0 && !state.is_body() {
+        break Err(anyhow!("Incomplete Request"));
+      } else if read == 0 && state.is_body() {
+        break Ok(state.into_parser_result(taken)?);
+      } else if buf_len == 0 && read == 0 {
         break Err(anyhow!("No new Reads"));
       } else if buf_len == 0 {
         continue;
       }
 
-      let parse = RequestParser::parse_request(taken, state);
-
-      let (new_buf, new_state) = match parse {
+      let (new_buf, new_state) = match RequestParser::parse_request(taken, state) {
         ParserStatus::Incomplete(state) => state,
         ParserStatus::Success(parser) => break Ok(parser),
         ParserStatus::Invalid(reason) => break Err(anyhow!(reason)),
       };
-
-      debug!("Incomplete State: {:#?}", &new_state);
 
       match new_state {
         ParserState::Start { .. } => (),
@@ -77,21 +80,6 @@ where
 
       buf = Some(new_buf);
       state = new_state;
-
-      if read == 0 {
-        dbg!(&buf);
-        debug!("Incomplete && n == 0 ");
-
-        unsafe {
-          debug!(
-            "{}",
-            String::from_utf8_unchecked((&buf).as_ref().unwrap_unchecked().clone())
-          );
-          debug!("{:?}", &buf.unwrap_unchecked());
-        }
-
-        break Err(anyhow!("Incomplete Request"));
-      }
     }
   };
 
@@ -142,8 +130,6 @@ mod unit_tests {
       .read(b"")
       .build();
 
-    b"GET /json HTTP/1.1\r\naccept: */*\r\nhost: localhost:3000\r\naccept-encoding: gzip, compress, deflate, br\r\n";
-
     let r = request::handle_request(&mut mock).await;
 
     assert!(
@@ -161,12 +147,20 @@ mod unit_tests {
   }
 
   #[tokio::test]
-  async fn split_buff() {
-    let buf : Vec<u8>= b"GET /json HTTP/1.1\r\naccept: */*\r\nhost: localhost:3000\r\naccept-encoding: gzip, compress, deflate, br\r\n".into();
-    let lines = buf.split(|b| b == &b'\n' || b == &b'\r');
+  async fn incomplete_and_zero() {
+    let mut mock = tokio_test::io::Builder::new()
+      .read(
+        b"GET /json HTTP/1.1\r\n\r\nHost: 192.168.0.1\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4",
+      )
+      .read(b"")
+      .build();
 
-    lines.for_each(|f| {
-      dbg!(String::from_utf8_lossy(&f));
-    });
+    let r = request::handle_request(&mut mock).await;
+
+    dbg!(&r);
+    assert!(
+      r.is_err(),
+      "Request should error after Writing \"\" in a invalid state",
+    );
   }
 }

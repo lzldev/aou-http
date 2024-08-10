@@ -67,7 +67,10 @@ impl Request {
 
     let req = match parse {
       super::ParserStatus::Success(p) => p.into_request(),
-      super::ParserStatus::Incomplete(_) => panic!(),
+      super::ParserStatus::Incomplete((buf, state)) => match state {
+        super::ParserState::Body { .. } => state.into_parser_result(buf).unwrap().into_request(),
+        _ => panic!("Incomplete Request"),
+      },
       super::ParserStatus::Invalid(reason) => panic!("Failed to parse: {reason}"),
     };
 

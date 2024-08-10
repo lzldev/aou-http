@@ -1,3 +1,5 @@
+use core::str;
+
 use crate::utils::range_from_subslice;
 
 use super::{
@@ -33,7 +35,10 @@ impl HeaderParser {
   {
     let mut offset: usize = 0;
     let mut has_host = false;
-    let mut connection = Connection::KeepAlive;
+    let mut options = HeaderOptions {
+      connection: Connection::KeepAlive,
+      content_length: None,
+    };
 
     let header_lines = lines.take_while(|b| *b != b"" && *b != b"\r");
 
@@ -57,11 +62,19 @@ impl HeaderParser {
 
       if has_host == false && header.eq_ignore_ascii_case(b"host") {
         has_host = true;
-      } else if header.eq_ignore_ascii_case(b"connection")
-        && value.eq_ignore_ascii_case(b" close\r\n")
+      }
+
+      if options.connection != Connection::Close
+        && header.eq_ignore_ascii_case(b"connection")
+        && value.starts_with(b" close")
       {
-        connection = Connection::Close
+        options.connection = Connection::Close
       };
+
+      if options.content_length.is_none() && header.eq_ignore_ascii_case(b"content-length") {
+        let st = str::from_utf8(&value[1..(value.len() - 1)]).unwrap();
+        options.content_length = Some(st.parse::<usize>().unwrap());
+      }
 
       let header = range_from_subslice(buf, header);
       let value = range_from_subslice(buf, &value[1..value.len() - 1]);
@@ -79,8 +92,8 @@ impl HeaderParser {
 
     Ok(HeaderParserResult {
       headers,
+      options,
       size: offset,
-      options: HeaderOptions { connection },
     })
   }
 }
@@ -186,5 +199,28 @@ mod unit_tests {
     let parser = HeaderParser::parse_headers(buf, lines);
 
     assert!(parser.is_ok(), "should be Valid {parser:?}");
+  }
+
+  #[tokio::test]
+  async fn request_close_content_length() {
+    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nConnection: close; timeout=123\r\nContent-Length: 72\r\n\r\n";
+    let lines = RequestParser::split_buf_lines(buf);
+    let parser = HeaderParser::parse_headers(buf, lines);
+
+    assert!(parser.is_ok(), "Headers should be valid {parser:?}");
+
+    let parser = parser.unwrap();
+
+    assert!(
+      parser.options.content_length.is_some(),
+      "Headers should have a valid content-length {parser:?}"
+    );
+
+    let content_length = parser.options.content_length.unwrap();
+
+    assert_eq!(
+      content_length, 72,
+      "Content-Length should be 72 {content_length:?}"
+    )
   }
 }

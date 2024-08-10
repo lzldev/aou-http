@@ -1,5 +1,6 @@
 use super::{ParserResult, ParserState};
 
+#[derive(Debug)]
 pub enum ParserStatus {
   Success(ParserResult),
   Incomplete((Vec<u8>, ParserState)),

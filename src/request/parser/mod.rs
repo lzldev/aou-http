@@ -86,15 +86,31 @@ impl RequestParser {
     let body = &buf[offset..];
     let body = utils::range_from_subslice(&buf, body);
 
-    let req = ParserResult {
-      buf,
-      head,
-      headers,
-      body,
-      header_options,
-    };
+    let body_len = body.1 - body.0;
 
-    ParserStatus::Success(req)
+    if header_options.content_length.is_some()
+      && header_options.content_length.unwrap() == (body_len - 2)
+    {
+      return ParserStatus::Success(ParserResult {
+        buf,
+        head,
+        headers,
+        body,
+        header_options,
+      });
+    }
+
+    return ParserStatus::Incomplete((
+      buf,
+      ParserState::Body {
+        cursor: offset,
+        read_until: buf_len,
+        head,
+        headers,
+        header_options,
+        body,
+      },
+    ));
   }
 }
 
@@ -147,6 +163,31 @@ mod unit_tests {
     assert!(
       parse.is_incomplete(),
       "Parse should return incomplete since it's not sure it's the end of the headers"
+    );
+  }
+
+  #[tokio::test]
+  async fn respect_content_length() {
+    let buf =
+      b"POST / HTTP/1.1\r\nHost: localhost:3000\r\nContent-Length: 14\r\n\r\n{\"valid\":true}";
+
+    let parse = RequestParser::parse_request(buf.into(), ParserState::Start { read_until: None });
+
+    assert!(
+      parse.is_success(),
+      "This request should be considered complete"
+    );
+  }
+
+  #[tokio::test]
+  async fn respect_content_length_incomplete() {
+    let buf = b"POST / HTTP/1.1\r\nHost: localhost:3000\r\nContent-Length: 14\r\n\r\n{\"vali";
+
+    let parse = RequestParser::parse_request(buf.into(), ParserState::Start { read_until: None });
+
+    assert!(
+      parse.is_incomplete(),
+      "Request body is smaller than the content-length"
     );
   }
 }
