@@ -32,6 +32,14 @@ where
       iter += 1;
       let mut taken = buf.take().expect("Taken None Buf");
       let prev_until = state.read_until().to_owned();
+
+      /*
+      TODO: Move into Config
+        5   = ReadTimeout
+        200 = KeepAliveTimeout
+      */
+      let sleep_ms = if iter == 0 { 5 } else { 200 };
+
       let read = tokio::select! {
         read_buf = stream.read_buf(&mut taken) => {
           match read_buf {
@@ -39,11 +47,10 @@ where
             Err(err) => break Err(anyhow!("Error reading buffer {err}"))
           }
         },
-        _ = tokio::time::sleep(tokio::time::Duration::from_millis(200)) => {
+        _ = tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)) => {
           if state.is_body() {
             break Ok(state.into_parser_result(taken)?);
           }
-
           break Err(anyhow!("Connection timeout"))
         }
       };

@@ -22,21 +22,35 @@ impl RequestParser {
     let mut offset: usize = 0;
     let mut lines = RequestParser::split_buf_lines(&buf);
 
-    //TODO: Turn this into a Option and Add a method to ParserState :: hasHead , ignoring this parsing if needed
-    // Then Later add a method Called ParserState :: getHead -> Option<Head> then Head.or(parserState::getHead)
-    let head = match RequestHead::from_split_iter(&mut lines, &buf) {
-      Ok((size, head)) => {
+    let FullParserState {
+      read_until,
+      cursor,
+      head,
+      headers,
+      header_options,
+      body,
+    } = FullParserState::from_state(_state);
+
+    let Some(head) = head
+      .and_then(|v| {
+        offset = offset + (v.http_version.1 + 1);
+        let _ = lines.advance_by(1);
+
+        Some(v)
+      })
+      .or_else(|| {
+        let (size, head) = RequestHead::from_split_iter(&mut lines, &buf).ok()?;
         offset = offset + size;
-        head
-      }
-      Err(_) => {
-        return ParserStatus::Incomplete((
-          buf,
-          ParserState::Start {
-            read_until: Some(buf_len),
-          },
-        ));
-      }
+
+        Some(head)
+      })
+    else {
+      return ParserStatus::Incomplete((
+        buf,
+        ParserState::Start {
+          read_until: Some(buf_len),
+        },
+      ));
     };
 
     let (headers, header_options) = match HeaderParser::parse_headers(&buf, lines) {
@@ -66,10 +80,12 @@ impl RequestParser {
     if offset >= buf_len {
       return ParserStatus::Incomplete((
         buf,
-        ParserState::Head {
+        ParserState::Headers {
           cursor: offset,
           read_until: buf_len,
           head,
+          headers,
+          header_options,
         },
       ));
     }

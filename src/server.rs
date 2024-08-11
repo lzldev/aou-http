@@ -61,16 +61,18 @@ impl AouServer {
 
   #[napi]
   pub async fn listen(&self, host: String, port: u32) -> AouInstance {
-    let subscriber = tracing_subscriber::fmt()
-      .compact()
-      .with_env_filter(EnvFilter::from_default_env())
-      .with_line_number(true)
-      .with_file(true)
-      .with_target(false)
-      .finish();
+    console_subscriber::init();
 
-    tracing::subscriber::set_global_default(subscriber)
-      .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
+    // let subscriber = tracing_subscriber::fmt()
+    //   .compact()
+    //   .with_env_filter(EnvFilter::from_default_env())
+    //   .with_line_number(true)
+    //   .with_file(true)
+    //   .with_target(false)
+    //   .finish();
+
+    // tracing::subscriber::set_global_default(subscriber)
+    //   .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
 
     let handlers = Arc::new(self.router.clone());
     let handlers_cpy = handlers.clone();
