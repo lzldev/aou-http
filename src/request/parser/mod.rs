@@ -53,26 +53,34 @@ impl RequestParser {
       ));
     };
 
-    let (headers, header_options) = match HeaderParser::parse_headers(&buf, lines) {
-      Ok(HeaderParserResult {
-        size,
-        headers,
-        options,
-      }) => {
-        offset = offset + size;
-        (headers, options)
+    let (headers, header_options) = match (headers, header_options) {
+      (Some(headers), Some(header_options)) => {
+        let n = headers.len();
+        let _ = lines.advance_by(n);
+
+        (headers, header_options)
       }
-      Err(HeaderParseError::Incomplete) | Err(HeaderParseError::Invalid) => {
-        return ParserStatus::Incomplete((
-          buf,
-          ParserState::Head {
-            cursor: offset,
-            read_until: buf_len,
-            head,
-          },
-        ));
-      }
-      Err(HeaderParseError::NoHost) => return ParserStatus::Invalid("Invalid Headers".into()),
+      (_, _) => match HeaderParser::parse_headers(&buf, lines) {
+        Ok(HeaderParserResult {
+          size,
+          headers,
+          options,
+        }) => {
+          offset = offset + size;
+          (headers, options)
+        }
+        Err(HeaderParseError::Incomplete) | Err(HeaderParseError::Invalid) => {
+          return ParserStatus::Incomplete((
+            buf,
+            ParserState::Head {
+              cursor: offset,
+              read_until: buf_len,
+              head,
+            },
+          ));
+        }
+        Err(HeaderParseError::NoHost) => return ParserStatus::Invalid("Invalid Headers".into()),
+      },
     };
 
     let buf_len = buf.len();
@@ -91,7 +99,7 @@ impl RequestParser {
     }
 
     //TODO:This means only the header has been read.
-    //should be chekced and not panic
+    //should be checked and not panic
     debug_assert!(
       offset <= buf_len,
       "Buf:{:#?}\nOffset larger than buffer size : Offset {offset} : Buf {buf_len} Headers:{}",
