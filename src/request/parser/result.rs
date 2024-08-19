@@ -33,7 +33,7 @@ impl ParserResult {
       self.headers,
       self.body,
       query,
-      HashMap::new(),
+      HashMap::with_capacity(0),
       crate::request::RequestOptions {
         connection: self.header_options.connection,
       },

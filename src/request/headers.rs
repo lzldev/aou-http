@@ -40,7 +40,7 @@ impl HeaderParser {
       content_length: None,
     };
 
-    let header_lines = lines.take_while(|b| *b != b"" && *b != b"\r");
+    let header_lines = lines.take_while(|b| b != &b"" && b != &b"\r");
 
     let mut headers = Vec::new();
 
@@ -68,13 +68,12 @@ impl HeaderParser {
         && header.eq_ignore_ascii_case(b"connection")
         && value.starts_with(b" close")
       {
-        dbg!("Setting headers to close");
         options.connection = Connection::Close
       };
 
       if options.content_length.is_none() && header.eq_ignore_ascii_case(b"content-length") {
-        let st = str::from_utf8(&value[1..(value.len() - 1)]).unwrap();
-        options.content_length = Some(st.parse::<usize>().unwrap());
+        let st = str::from_utf8(&value[1..(value.len() - 1)]).expect("parse content length value"); //TODO : remove unwrap
+        options.content_length = Some(st.parse::<usize>().expect("parse content-length"));
       }
 
       let header = range_from_subslice(buf, header);

@@ -9,7 +9,10 @@ pub use state::*;
 pub use status::*;
 
 use crate::{
-  request::{Connection, HeaderParseError, HeaderParser, HeaderParserResult, RequestHead},
+  request::{
+    Connection, HeaderParseError, HeaderParser, HeaderParserResult, RequestHead,
+    RequestHeadParseError,
+  },
   utils,
 };
 
@@ -33,26 +36,35 @@ impl RequestParser {
       body: _,
     } = FullParserState::from_state(_state);
 
-    let Some(head) = head
+    let head = match head
       .and_then(|v| {
         offset = offset + (v.http_version.1 + 1);
         lines.advance_by(1).expect("Advanced lines by too much");
 
         Some(v)
       })
-      .or_else(|| {
-        let (size, head) = RequestHead::from_split_iter(&mut lines, &buf).ok()?;
-        offset = offset + size;
+      .map_or_else(
+        || {
+          let (size, head) = RequestHead::from_split_iter(&mut lines, &buf)?;
+          offset = offset + size;
 
-        Some(head)
-      })
-    else {
-      return ParserStatus::Incomplete((
-        buf,
-        ParserState::Start {
-          read_until: Some(buf_len),
+          return Ok::<RequestHead, RequestHeadParseError>(head);
         },
-      ));
+        |ok| Ok(ok),
+      ) {
+      Ok(head) => head,
+      Err(RequestHeadParseError::InvalidHTTPVersion) => {
+        return ParserStatus::Invalid("HTTP Version Not supported".into());
+      }
+      Err(err) => {
+        dbg!(err);
+        return ParserStatus::Incomplete((
+          buf,
+          ParserState::Start {
+            read_until: Some(buf_len),
+          },
+        ));
+      }
     };
 
     let (headers, header_options) = match (headers, header_options) {
@@ -149,6 +161,7 @@ impl RequestParser {
     let body = utils::range_from_subslice(&buf, body);
 
     let body_len = body.1 - body.0;
+    dbg!(&body_len);
 
     if header_options.content_length.is_some()
       && header_options.content_length.unwrap() == (body_len - 2)
@@ -251,5 +264,14 @@ mod unit_tests {
       parse.is_incomplete(),
       "Request body is smaller than the content-length"
     );
+  }
+
+  #[tokio::test]
+  async fn invalid_head_version() {
+    let buf = b"POST / HTTP/1.0\r\nHost: localhost:3000\r\nContent-Length: 14\r\n\r\n{\"vali";
+
+    let parse = RequestParser::parse_request(buf.into(), ParserState::Start { read_until: None });
+
+    assert!(parse.is_invalid(), "Header should be invalid");
   }
 }

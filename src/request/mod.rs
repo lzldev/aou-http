@@ -55,6 +55,8 @@ where
         }
       };
 
+      dbg!(read);
+
       let buf_len = taken.len();
 
       if read == 0 && !state.is_body() {
@@ -97,6 +99,10 @@ where
 
 #[cfg(test)]
 mod unit_tests {
+
+  use std::time::Duration;
+
+  use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
   use crate::request::{self, Connection};
 
@@ -205,5 +211,21 @@ mod unit_tests {
       r.is_ok(),
       "Long request with multiple valid states should be ok",
     );
+  }
+
+  #[tokio::test]
+  async fn invalid_headers_stream() {
+    let mut mock = tokio_test::io::Builder::new()
+      .read(
+        b"GET /json HTTP/1.0\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n\r\n{\"valid\":\"json\"",
+      )
+      .build();
+
+    let r = request::handle_request(&mut mock).await;
+
+    let mut sink = tokio::io::sink();
+    tokio::io::copy(&mut mock, &mut sink).await.unwrap();
+
+    assert!(r.is_err(), "Request should error with invalid Header",);
   }
 }
