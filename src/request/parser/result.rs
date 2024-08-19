@@ -34,6 +34,9 @@ impl ParserResult {
       self.body,
       query,
       HashMap::new(),
+      crate::request::RequestOptions {
+        connection: self.header_options.connection,
+      },
     );
   }
 }

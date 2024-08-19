@@ -2,18 +2,20 @@ mod result;
 mod state;
 mod status;
 
+use std::slice::Split;
+
 pub use result::*;
 pub use state::*;
 pub use status::*;
 
 use crate::{
-  request::{HeaderParseError, HeaderParser, HeaderParserResult, RequestHead},
+  request::{Connection, HeaderParseError, HeaderParser, HeaderParserResult, RequestHead},
   utils,
 };
 
 pub struct RequestParser;
 impl RequestParser {
-  pub fn split_buf_lines<'a>(buf: &'a [u8]) -> std::slice::Split<'a, u8, impl FnMut(&u8) -> bool> {
+  pub fn split_buf_lines<'a>(buf: &'a [u8]) -> Split<'a, u8, impl FnMut(&u8) -> bool + Clone> {
     buf.split(|c| c == &b'\n')
   }
 
@@ -23,18 +25,18 @@ impl RequestParser {
     let mut lines = RequestParser::split_buf_lines(&buf);
 
     let FullParserState {
-      read_until,
+      read_until: _,
       cursor,
       head,
       headers,
       header_options,
-      body,
+      body: _,
     } = FullParserState::from_state(_state);
 
     let Some(head) = head
       .and_then(|v| {
         offset = offset + (v.http_version.1 + 1);
-        let _ = lines.advance_by(1);
+        lines.advance_by(1).expect("Advanced lines by too much");
 
         Some(v)
       })
@@ -54,13 +56,49 @@ impl RequestParser {
     };
 
     let (headers, header_options) = match (headers, header_options) {
-      (Some(headers), Some(header_options)) => {
+      (Some(mut headers), Some(mut header_options)) => {
+        offset = cursor.unwrap_or(offset);
         let n = headers.len();
-        let _ = lines.advance_by(n);
+        lines.advance_by(n).expect("Advanced Lines by too Much");
 
-        (headers, header_options)
+        let mut peeker = lines.clone().peekable();
+
+        if let Some(&b"\r") = peeker.peek() {
+          (headers, header_options)
+        } else {
+          match HeaderParser::parse_headers(&buf, &mut lines) {
+            Ok(HeaderParserResult {
+              size,
+              headers: mut headers2,
+              options,
+            }) => {
+              offset = offset + size;
+
+              //TODO:HACK
+              if options.connection == Connection::Close {
+                header_options.connection = Connection::Close
+              }
+
+              headers.append(&mut headers2);
+              (headers, header_options)
+            }
+            Err(HeaderParseError::Incomplete) | Err(HeaderParseError::Invalid) => {
+              return ParserStatus::Incomplete((
+                buf,
+                ParserState::Head {
+                  cursor: offset,
+                  read_until: buf_len,
+                  head,
+                },
+              ));
+            }
+            Err(HeaderParseError::NoHost) => {
+              return ParserStatus::Invalid("Invalid Headers".into())
+            }
+          }
+        }
       }
-      (_, _) => match HeaderParser::parse_headers(&buf, lines) {
+      (_, _) => match HeaderParser::parse_headers(&buf, &mut lines) {
         Ok(HeaderParserResult {
           size,
           headers,

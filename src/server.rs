@@ -1,5 +1,6 @@
 use std::any;
 use std::collections::HashMap;
+use std::env;
 use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
@@ -61,18 +62,20 @@ impl AouServer {
 
   #[napi]
   pub async fn listen(&self, host: String, port: u32) -> AouInstance {
-    console_subscriber::init();
+    if env::var("TOKIO_CONSOLE").is_ok() {
+      console_subscriber::init();
+    } else {
+      let subscriber = tracing_subscriber::fmt()
+        .compact()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_line_number(true)
+        .with_file(true)
+        .with_target(false)
+        .finish();
 
-    // let subscriber = tracing_subscriber::fmt()
-    //   .compact()
-    //   .with_env_filter(EnvFilter::from_default_env())
-    //   .with_line_number(true)
-    //   .with_file(true)
-    //   .with_target(false)
-    //   .finish();
-
-    // tracing::subscriber::set_global_default(subscriber)
-    //   .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
+      tracing::subscriber::set_global_default(subscriber)
+        .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
+    };
 
     let handlers = Arc::new(self.router.clone());
     let handlers_cpy = handlers.clone();
@@ -91,7 +94,6 @@ impl AouServer {
       loop {
         let (stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
         let handlers = handlers.clone();
-        debug!("New Connection");
 
         tokio::spawn(async move { handle_connection(stream, handlers).await });
       }

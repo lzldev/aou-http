@@ -58,7 +58,7 @@ where
       let buf_len = taken.len();
 
       if read == 0 && !state.is_body() {
-        break Err(anyhow!("Incomplete Request"));
+        break Err(anyhow!("Incomplete Request {state:?}"));
       } else if read == 0 && state.is_body() {
         break Ok(state.into_parser_result(taken)?);
       } else if buf_len == 0 && read == 0 {
@@ -98,7 +98,7 @@ where
 #[cfg(test)]
 mod unit_tests {
 
-  use crate::request;
+  use crate::request::{self, Connection};
 
   #[tokio::test]
   async fn incomplete_once() {
@@ -143,31 +143,67 @@ mod unit_tests {
       r.is_ok(),
       "Request should return true even though it erroed once {r:?}",
     );
-
-    let r = r.unwrap();
-    let h = r.headers();
-
-    dbg!(&r.body());
-    h.iter().for_each(|f| {
-      dbg!(&f.1);
-    });
   }
 
   #[tokio::test]
   async fn incomplete_and_zero() {
     let mut mock = tokio_test::io::Builder::new()
       .read(
-        b"GET /json HTTP/1.1\r\n\r\nHost: 192.168.0.1\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4",
+        b"GET /json HTTP/1.1\r\nHost: 192.168.0.1\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4",
       )
       .read(b"")
       .build();
 
     let r = request::handle_request(&mut mock).await;
 
-    dbg!(&r);
     assert!(
       r.is_err(),
       "Request should error after Writing \"\" in a invalid state",
+    );
+  }
+
+  #[tokio::test]
+  async fn multiple_valid_header_states() {
+    let mut mock = tokio_test::io::Builder::new()
+      .read(
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+      )
+      .read(b"Connection: close\r\n")
+      .read(b"\r\n{\"valid\":\"json\"")
+      .read(b"}")
+      .build();
+
+    let r = request::handle_request(&mut mock).await;
+
+    assert!(
+      r.is_ok(),
+      "Long request with multiple valid states should be ok",
+    );
+
+    let r = r.unwrap();
+
+    assert_eq!(
+      r.get_connection(),
+      &Connection::Close,
+      "Connection header should be close"
+    )
+  }
+
+  #[tokio::test]
+  async fn headers_cache_happy_path() {
+    let mut mock = tokio_test::io::Builder::new()
+      .read(
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+      )
+      .read(b"\r\n{\"valid\":\"json\"")
+      .read(b"")
+      .build();
+
+    let r = request::handle_request(&mut mock).await;
+
+    assert!(
+      r.is_ok(),
+      "Long request with multiple valid states should be ok",
     );
   }
 }

@@ -1,7 +1,9 @@
 use core::str;
 use std::collections::{BTreeMap, HashMap};
 
-use super::{options::Connection, RequestHead, RequestHeaders, RequestParser, VecOffset};
+use super::{
+  options::Connection, RequestHead, RequestHeaders, RequestOptions, RequestParser, VecOffset,
+};
 
 use napi_derive::napi;
 use serde_json::Map;
@@ -18,7 +20,7 @@ pub struct Request {
   #[napi(ts_type = "{}")]
   pub params: HashMap<String, String>,
   pub query: HashMap<String, String>,
-  connection: Connection, // TODO: Make this the Request Options struct
+  options: RequestOptions,
 }
 
 impl Default for Request {
@@ -31,7 +33,9 @@ impl Default for Request {
       context: Default::default(),
       params: Default::default(),
       query: Default::default(),
-      connection: Connection::KeepAlive,
+      options: RequestOptions {
+        connection: Connection::KeepAlive,
+      },
     }
   }
 }
@@ -45,6 +49,7 @@ impl Request {
     body: VecOffset,
     query: HashMap<String, String>,
     params: HashMap<String, String>,
+    options: RequestOptions,
   ) -> Request {
     Request {
       buf,
@@ -54,6 +59,7 @@ impl Request {
       context: serde_json::Value::Object(Map::new()),
       params,
       query,
+      options,
       ..Default::default()
     }
   }
@@ -115,6 +121,6 @@ impl Request {
   }
 
   pub fn get_connection(&self) -> &Connection {
-    &self.connection
+    &self.options.connection
   }
 }
