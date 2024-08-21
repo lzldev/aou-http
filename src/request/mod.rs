@@ -55,8 +55,6 @@ where
         }
       };
 
-      dbg!(read);
-
       let buf_len = taken.len();
 
       if read == 0 && !state.is_body() {
@@ -100,11 +98,10 @@ where
 #[cfg(test)]
 mod unit_tests {
 
-  use std::time::Duration;
-
-  use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-  use crate::request::{self, Connection};
+  use crate::{
+    request::{self, Connection},
+    utils::test::BuilderWithBody,
+  };
 
   #[tokio::test]
   async fn incomplete_once() {
@@ -140,7 +137,6 @@ mod unit_tests {
       .read(
         b"GET /json HTTP/1.1\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\nhost: 192.168.3.29:7070\r\n\r\n",
       )
-      .read(b"")
       .build();
 
     let r = request::handle_request(&mut mock).await;
@@ -149,6 +145,10 @@ mod unit_tests {
       r.is_ok(),
       "Request should return true even though it erroed once {r:?}",
     );
+
+    let r = r.unwrap();
+
+    assert_eq!(r.body().len(), 0, "Request body should be of length 0")
   }
 
   #[tokio::test]
@@ -172,11 +172,10 @@ mod unit_tests {
   async fn multiple_valid_header_states() {
     let mut mock = tokio_test::io::Builder::new()
       .read(
-        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4",
       )
-      .read(b"Connection: close\r\n")
-      .read(b"\r\n{\"valid\":\"json\"")
-      .read(b"}")
+      .read(b"\r\nConnection: close")
+      .with_body(b"{\"valid\":\"json\"}")
       .build();
 
     let r = request::handle_request(&mut mock).await;
@@ -199,9 +198,9 @@ mod unit_tests {
   async fn headers_cache_happy_path() {
     let mut mock = tokio_test::io::Builder::new()
       .read(
-        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4",
       )
-      .read(b"\r\n{\"valid\":\"json\"")
+      .with_body(b"{\"valid\":\"json\"}")
       .read(b"")
       .build();
 
@@ -227,5 +226,32 @@ mod unit_tests {
     tokio::io::copy(&mut mock, &mut sink).await.unwrap();
 
     assert!(r.is_err(), "Request should error with invalid Header",);
+  }
+
+  #[tokio::test]
+  async fn multiple_requests_with_content_length() {
+    let mut mock = tokio_test::io::Builder::new()
+      .read(
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+      )
+      .read(b"Content-Length: 16\r\nConnection: close\r\n")
+      .read(b"\r\n{\"valid\":\"json\"")
+      .read(b"}")
+      .read(b"")
+      // .wait(Duration::from_millis(1000))
+      .read(
+        b"GET /json HTTP/1.1\r\nHost: 192.168.3.29:7070\r\naccept: */*\r\naccept-encoding: gzip, compress, deflate, br\r\nuser-agent: oha/1.4.4\r\n",
+      )
+      .read(b"Content-Length: 16\r\nConnection: close\r\n")
+      .read(b"\r\n{\"valid\":\"json\"")
+      .read(b"}")
+      .read(b"")
+      .build();
+
+    let r = request::handle_request(&mut mock).await;
+    assert!(r.is_ok(), "First Request should be parsed correctly");
+
+    let r = request::handle_request(&mut mock).await;
+    assert!(r.is_ok(), "Second Request should be parsed correctly");
   }
 }

@@ -59,7 +59,7 @@ test("404", async (t) => {
 
 test("request parsing", async (t) => {
   const request = AouRequest.fromString(
-    `GET / HTTP/1.1\r\nHost: localhost:7070\r\nContent-Length: 25\r\n\r\n`
+    `GET / HTTP/1.1\r\nHost: localhost:7070\r\n\r\n`
   );
 
   t.is(request.method, "GET");

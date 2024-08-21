@@ -55,8 +55,12 @@ impl HeaderParser {
 
       if !value.starts_with(b" ") {
         //format!( "Header without whitespace at buf {}", offset - header.len() - 1)
-        return Err(HeaderParseError::Invalid);
+        dbg!("Doesn't start with space");
+        dbg!(String::from_utf8_lossy(value));
+        return Err(HeaderParseError::Incomplete);
       } else if !value.ends_with(b"\r") {
+        dbg!("Doesn't end with CRLF");
+        dbg!(String::from_utf8_lossy(value));
         return Err(HeaderParseError::Incomplete);
       };
 

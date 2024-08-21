@@ -31,6 +31,7 @@ impl RequestHead {
     vec: &'a [u8],
   ) -> Result<(usize, RequestHead), RequestHeadParseError> {
     let mut offset: usize = 0;
+
     let head = iter.next().ok_or(RequestHeadParseError::NoHead)?;
     offset = offset.wrapping_add(head.len() + 1); // Add size of Head + \n to offset
 

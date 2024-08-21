@@ -9,6 +9,7 @@ pub use state::*;
 pub use status::*;
 
 use crate::{
+  constants::{CRLF_SIZE, LF},
   request::{
     Connection, HeaderParseError, HeaderParser, HeaderParserResult, RequestHead,
     RequestHeadParseError,
@@ -19,7 +20,7 @@ use crate::{
 pub struct RequestParser;
 impl RequestParser {
   pub fn split_buf_lines<'a>(buf: &'a [u8]) -> Split<'a, u8, impl FnMut(&u8) -> bool + Clone> {
-    buf.split(|c| c == &b'\n')
+    buf.split(|c| c == &LF)
   }
 
   pub fn parse_request(buf: Vec<u8>, _state: ParserState) -> ParserStatus {
@@ -57,7 +58,6 @@ impl RequestParser {
         return ParserStatus::Invalid("HTTP Version Not supported".into());
       }
       Err(err) => {
-        dbg!(err);
         return ParserStatus::Incomplete((
           buf,
           ParserState::Start {
@@ -89,6 +89,10 @@ impl RequestParser {
               //TODO:HACK
               if options.connection == Connection::Close {
                 header_options.connection = Connection::Close
+              }
+
+              if header_options.content_length.is_none() && options.content_length.is_some() {
+                header_options.content_length = options.content_length;
               }
 
               headers.append(&mut headers2);
@@ -157,15 +161,49 @@ impl RequestParser {
       headers.len()
     );
 
-    let body = &buf[offset..];
-    let body = utils::range_from_subslice(&buf, body);
+    //TODO: This should be a peekable iterator from the start.
+    let mut lines = lines.peekable();
 
+    if let None = lines.peek() {
+      return ParserStatus::Incomplete((
+        buf,
+        ParserState::Headers {
+          cursor: offset,
+          read_until: buf_len,
+          head,
+          headers,
+          header_options,
+        },
+      ));
+    };
+
+    let (body, content_length) = if let Some(content_length) = header_options.content_length {
+      if buf_len < offset + CRLF_SIZE + content_length {
+        return ParserStatus::Incomplete((
+          buf,
+          ParserState::Headers {
+            cursor: offset,
+            read_until: buf_len,
+            head,
+            headers,
+            header_options,
+          },
+        ));
+      }
+
+      (
+        &buf[offset + CRLF_SIZE..offset + CRLF_SIZE + content_length],
+        content_length,
+      )
+    } else {
+      (&buf[offset..offset], 0)
+    };
+
+    let body = utils::range_from_subslice(&buf, body);
     let body_len = body.1 - body.0;
     dbg!(&body_len);
 
-    if header_options.content_length.is_some()
-      && header_options.content_length.unwrap() == (body_len - 2)
-    {
+    if body_len == content_length {
       return ParserStatus::Success(ParserResult {
         buf,
         head,
