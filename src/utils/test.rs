@@ -1,9 +1,6 @@
-use std::{borrow::BorrowMut, sync::LazyLock};
+use std::sync::LazyLock;
 
-use tokio::{
-  io::{AsyncWriteExt, Sink},
-  sync::Mutex,
-};
+use tokio::{io::Sink, sync::Mutex};
 
 /**
  * Returns the buffer with a content length

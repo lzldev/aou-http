@@ -11,8 +11,7 @@ pub use status::*;
 use crate::{
   constants::{CRLF_SIZE, LF},
   request::{
-    Connection, HeaderParseError, HeaderParser, HeaderParserResult, RequestHead,
-    RequestHeadParseError,
+    HeaderParseError, HeaderParser, HeaderParserResult, RequestHead, RequestHeadParseError,
   },
   utils,
 };
@@ -57,7 +56,7 @@ impl RequestParser {
       Err(RequestHeadParseError::InvalidHTTPVersion) => {
         return ParserStatus::Invalid("HTTP Version Not supported".into());
       }
-      Err(err) => {
+      Err(_) => {
         return ParserStatus::Incomplete((
           buf,
           ParserState::Start {
@@ -86,14 +85,7 @@ impl RequestParser {
             }) => {
               offset = offset + size;
 
-              //TODO:HACK
-              if options.connection == Connection::Close {
-                header_options.connection = Connection::Close
-              }
-
-              if header_options.content_length.is_none() && options.content_length.is_some() {
-                header_options.content_length = options.content_length;
-              }
+              header_options.merge(options);
 
               headers.append(&mut headers2);
               (headers, header_options)
@@ -107,9 +99,6 @@ impl RequestParser {
                   head,
                 },
               ));
-            }
-            Err(HeaderParseError::NoHost) => {
-              return ParserStatus::Invalid("Invalid Headers".into())
             }
           }
         }
@@ -133,9 +122,13 @@ impl RequestParser {
             },
           ));
         }
-        Err(HeaderParseError::NoHost) => return ParserStatus::Invalid("Invalid Headers".into()),
       },
     };
+
+    if !header_options.has_host {
+      //TODO: Make this a real error
+      return ParserStatus::Invalid("Invalid Headers".into());
+    }
 
     let buf_len = buf.len();
 
@@ -201,7 +194,6 @@ impl RequestParser {
 
     let body = utils::range_from_subslice(&buf, body);
     let body_len = body.1 - body.0;
-    dbg!(&body_len);
 
     if body_len == content_length {
       return ParserStatus::Success(ParserResult {

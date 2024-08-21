@@ -14,7 +14,6 @@ pub type RequestHeaderVec = (VecOffset, VecOffset);
 pub enum HeaderParseError {
   Incomplete,
   Invalid,
-  NoHost,
 }
 
 #[derive(Debug)]
@@ -34,10 +33,10 @@ impl HeaderParser {
     P: FnMut(&u8) -> bool,
   {
     let mut offset: usize = 0;
-    let mut has_host = false;
     let mut options = HeaderOptions {
       connection: Connection::KeepAlive,
       content_length: None,
+      has_host: false,
     };
 
     let header_lines = lines.take_while(|b| b != &b"" && b != &b"\r");
@@ -55,17 +54,13 @@ impl HeaderParser {
 
       if !value.starts_with(b" ") {
         //format!( "Header without whitespace at buf {}", offset - header.len() - 1)
-        dbg!("Doesn't start with space");
-        dbg!(String::from_utf8_lossy(value));
         return Err(HeaderParseError::Incomplete);
       } else if !value.ends_with(b"\r") {
-        dbg!("Doesn't end with CRLF");
-        dbg!(String::from_utf8_lossy(value));
         return Err(HeaderParseError::Incomplete);
       };
 
-      if has_host == false && header.eq_ignore_ascii_case(b"host") {
-        has_host = true;
+      if options.has_host == false && header.eq_ignore_ascii_case(b"host") {
+        options.has_host = true;
       }
 
       if options.connection != Connection::Close
@@ -88,10 +83,6 @@ impl HeaderParser {
 
     if headers.len() == 0 {
       return Err(HeaderParseError::Incomplete);
-    }
-
-    if has_host == false {
-      return Err(HeaderParseError::NoHost);
     }
 
     Ok(HeaderParserResult {
@@ -171,41 +162,41 @@ mod unit_tests {
     );
   }
 
-  #[tokio::test]
-  async fn request_without_host_is_invalid() {
-    let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
-    let mut lines = RequestParser::split_buf_lines(buf);
+  // #[tokio::test]
+  // async fn request_without_host_is_invalid() {
+  //   let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+  //   let mut lines = RequestParser::split_buf_lines(buf);
 
-    let parser = HeaderParser::parse_headers(buf, &mut lines);
-    let err = parser.unwrap_err();
+  //   let parser = HeaderParser::parse_headers(buf, &mut lines);
+  //   let err = parser.unwrap_err();
 
-    assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
+  //   assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
 
-    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
-    let mut lines = RequestParser::split_buf_lines(buf);
+  //   let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+  //   let mut lines = RequestParser::split_buf_lines(buf);
 
-    let parser = HeaderParser::parse_headers(buf, &mut lines);
+  //   let parser = HeaderParser::parse_headers(buf, &mut lines);
 
-    assert!(parser.is_ok(), "should be Valid {parser:?}");
-  }
+  //   assert!(parser.is_ok(), "should be Valid {parser:?}");
+  // }
 
-  #[tokio::test]
-  async fn request_with_server_123() {
-    let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
-    let mut lines = RequestParser::split_buf_lines(buf);
+  // #[tokio::test]
+  // async fn request_with_server_123() {
+  //   let buf = b"Not-Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+  //   let mut lines = RequestParser::split_buf_lines(buf);
 
-    let parser = HeaderParser::parse_headers(buf, &mut lines);
-    let err = parser.unwrap_err();
+  //   let parser = HeaderParser::parse_headers(buf, &mut lines);
+  //   let err = parser.unwrap_err();
 
-    assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
+  //   assert_eq!(err, HeaderParseError::NoHost, "should be Invalid");
 
-    let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
-    let mut lines = RequestParser::split_buf_lines(buf);
+  //   let buf = b"Host: localhost:3000\r\nx-random-header: new_header\r\nUser-Agent: chrome-something:::::idk\r\n\r\n";
+  //   let mut lines = RequestParser::split_buf_lines(buf);
 
-    let parser = HeaderParser::parse_headers(buf, &mut lines);
+  //   let parser = HeaderParser::parse_headers(buf, &mut lines);
 
-    assert!(parser.is_ok(), "should be Valid {parser:?}");
-  }
+  //   assert!(parser.is_ok(), "should be Valid {parser:?}");
+  // }
 
   #[tokio::test]
   async fn request_close_content_length() {
