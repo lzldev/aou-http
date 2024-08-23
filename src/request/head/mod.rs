@@ -1,6 +1,11 @@
 use crate::utils::range_from_subslice;
 
+mod error;
+pub use error::*;
+
 use super::VecOffset;
+
+const HTTP1_1: &[u8] = b"HTTP/1.1\r";
 
 #[derive(Debug, Default)]
 pub struct RequestHead {
@@ -8,22 +13,6 @@ pub struct RequestHead {
   pub path: VecOffset,
   pub http_version: VecOffset,
 }
-
-#[derive(thiserror::Error, Debug)]
-pub enum RequestHeadParseError {
-  #[error("Request Head Not found")]
-  NoHead,
-  #[error("Method not found")]
-  NoMethod,
-  #[error("Path not found")]
-  NoPath,
-  #[error("Http Version not found")]
-  NoHTTPVersion,
-  #[error("Invalid HTTP Version")]
-  InvalidHTTPVersion,
-}
-
-const HTTP1_1: &[u8] = b"HTTP/1.1\r";
 
 impl RequestHead {
   pub fn from_split_iter<'a>(
