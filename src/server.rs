@@ -1,6 +1,5 @@
 use std::any;
 use std::collections::HashMap;
-use std::env;
 use std::fmt::Debug;
 use std::net::SocketAddrV4;
 use std::sync::Arc;
@@ -62,23 +61,19 @@ impl AouServer {
 
   #[napi]
   pub async fn listen(&self, host: String, port: u32) -> AouInstance {
-    if env::var("TOKIO_CONSOLE").is_ok() {
-      console_subscriber::init();
-    } else {
-      let subscriber = tracing_subscriber::fmt()
-        .compact()
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_line_number(true)
-        .with_file(true)
-        .with_target(false)
-        .finish();
+    let subscriber = tracing_subscriber::fmt()
+      .compact()
+      .with_env_filter(EnvFilter::from_default_env())
+      .with_line_number(true)
+      .with_file(true)
+      .with_target(false)
+      .finish();
 
-      tracing::subscriber::set_global_default(subscriber)
-        .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
-    };
+    tracing::subscriber::set_global_default(subscriber)
+      .unwrap_or_else(|err| error!("Tried to register tracing subscriber twice {err}"));
 
-    let handlers = Arc::new(self.router.clone());
-    let handlers_cpy = handlers.clone();
+    let router = Arc::new(self.router.clone());
+    let router2 = router.clone();
 
     let addr = format!("{host}:{port}")
       .parse::<SocketAddrV4>()
@@ -89,20 +84,20 @@ impl AouServer {
       .expect("Couldn't establish tcp connection");
 
     tokio::spawn(async move {
-      let handlers = handlers;
+      let router = router;
 
       loop {
         let (stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
-        let handlers = handlers.clone();
+        let router = router.clone();
 
-        tokio::spawn(async move { handle_connection(stream, handlers).await });
+        tokio::spawn(async move { handle_connection(stream, router).await });
       }
     });
 
     AouInstance {
       ip: addr.ip().to_string(),
       port: addr.port() as u32,
-      _router: handlers_cpy,
+      _router: router2,
       _options: self.options,
     }
   }
@@ -239,7 +234,7 @@ impl AouServer {
 
 pub async fn handle_connection<TStream>(
   mut stream: TStream,
-  handlers: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
+  router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
 ) -> anyhow::Result<()>
 where
   TStream: AsyncRead + AsyncWrite + Unpin,
@@ -269,7 +264,7 @@ where
 
     info!("{method} {path}");
 
-    let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
+    let (route, handler) = match AouServer::match_route(router.as_ref(), path, method) {
       Some(_match) => _match,
       None => {
         debug!("Route not found {path}");
