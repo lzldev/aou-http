@@ -21,6 +21,27 @@ pub struct Request {
   pub params: HashMap<String, String>,
   pub query: HashMap<String, String>,
   options: RequestOptions,
+  cache: RequestFieldCache,
+}
+
+#[derive(Debug)]
+struct RequestFieldCache {
+  path: Option<String>,
+  method: Option<String>,
+  http_version: Option<String>,
+  headers: Option<BTreeMap<String, String>>,
+  body: Option<String>,
+}
+impl Default for RequestFieldCache {
+  fn default() -> Self {
+    Self {
+      path: None,
+      method: None,
+      http_version: None,
+      headers: None,
+      body: None,
+    }
+  }
 }
 
 impl Default for Request {
@@ -36,6 +57,7 @@ impl Default for Request {
       options: RequestOptions {
         connection: Connection::KeepAlive,
       },
+      cache: Default::default(),
     }
   }
 }
@@ -84,24 +106,51 @@ impl Request {
   }
 
   #[napi(getter)]
-  pub fn method(&self) -> &str {
-    unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.method.0..self.head.method.1]) }
-  }
-
-  #[napi(getter)]
-  pub fn path(&self) -> &str {
-    unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.path.0..self.head.path.1]) }
-  }
-
-  #[napi(getter)]
-  pub fn http_version(&self) -> &str {
-    unsafe {
-      std::str::from_utf8_unchecked(&self.buf[self.head.http_version.0..self.head.http_version.1])
+  pub fn method(&mut self) -> &str {
+    if self.cache.method.is_some() {
+      return self.cache.method.as_ref().unwrap();
     }
+    let method =
+      unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.method.0..self.head.method.1]) };
+
+    self.cache.method = Some(method.to_string());
+
+    method
   }
 
   #[napi(getter)]
-  pub fn headers(&self) -> BTreeMap<String, String> {
+  pub fn path(&mut self) -> &str {
+    if self.cache.path.is_some() {
+      return self.cache.path.as_ref().unwrap();
+    }
+    let path =
+      unsafe { std::str::from_utf8_unchecked(&self.buf[self.head.path.0..self.head.path.1]) };
+
+    self.cache.path = Some(path.to_string());
+
+    path
+  }
+
+  #[napi(getter)]
+  pub fn http_version(&mut self) -> &str {
+    if self.cache.http_version.is_some() {
+      return self.cache.http_version.as_ref().unwrap();
+    }
+
+    let http_version = unsafe {
+      std::str::from_utf8_unchecked(&self.buf[self.head.http_version.0..self.head.http_version.1])
+    };
+    self.cache.http_version = Some(http_version.to_string());
+
+    http_version
+  }
+
+  #[napi(getter)]
+  pub fn headers(&mut self) -> BTreeMap<String, String> {
+    if self.cache.headers.is_some() {
+      return self.cache.headers.as_ref().unwrap().clone();
+    }
+
     let mut map = BTreeMap::<String, String>::new();
     unsafe {
       self.headers.iter().for_each(|v| {
@@ -112,12 +161,21 @@ impl Request {
       });
     }
 
+    self.cache.headers = Some(map.clone());
+
     map
   }
 
   #[napi(getter)]
-  pub fn body(&self) -> &str {
-    unsafe { std::str::from_utf8_unchecked(&self.buf[self.body.0..self.body.1]) }
+  pub fn body(&mut self) -> &str {
+    if self.cache.body.is_some() {
+      return self.cache.body.as_ref().unwrap();
+    }
+
+    let body = unsafe { std::str::from_utf8_unchecked(&self.buf[self.body.0..self.body.1]) };
+    self.cache.body = Some(body.to_string());
+
+    body
   }
 
   pub fn get_connection(&self) -> &Connection {

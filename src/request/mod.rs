@@ -58,7 +58,7 @@ where
       let buf_len = taken.len();
 
       if read == 0 && !state.is_body() {
-        break Err(anyhow!("Incomplete Request {state:?}"));
+        break Err(anyhow!("Read 0 {state:?}"));
       } else if read == 0 && state.is_body() {
         break Ok(state.into_parser_result(taken)?);
       } else if buf_len == 0 && read == 0 {
@@ -146,7 +146,7 @@ mod unit_tests {
       "Request should return true even though it erroed once {r:?}",
     );
 
-    let r = r.unwrap();
+    let mut r = r.unwrap();
 
     assert_eq!(r.body().len(), 0, "Request body should be of length 0")
   }
