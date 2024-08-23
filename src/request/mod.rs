@@ -19,11 +19,27 @@ use tracing::error;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 
-pub async fn handle_request<T>(stream: &mut T) -> Result<Request, anyhow::Error>
+#[derive(thiserror::Error, Debug)]
+pub enum HandleRequestError {
+  #[error("Connection Timeout")]
+  Timeout,
+  #[error("End of File")]
+  EOF,
+  #[error(transparent)]
+  Invalid(#[from] anyhow::Error),
+}
+
+impl From<ParserStateError> for HandleRequestError {
+  fn from(err: ParserStateError) -> Self {
+    HandleRequestError::Invalid(anyhow!(err))
+  }
+}
+
+pub async fn handle_request<T>(stream: &mut T) -> Result<Request, HandleRequestError>
 where
   T: AsyncRead + AsyncWrite + Unpin,
 {
-  let mut _result: Result<ParserResult, anyhow::Error> = {
+  let mut _result: Result<ParserResult, HandleRequestError> = {
     let mut iter = 0;
     let mut buf = Some(Vec::new());
     let mut state = ParserState::Start { read_until: None };
@@ -44,25 +60,25 @@ where
         read_buf = stream.read_buf(&mut taken) => {
           match read_buf {
             Ok(read) => read,
-            Err(err) => break Err(anyhow!("Error reading buffer {err}"))
+            Err(err) => break Err(HandleRequestError::Invalid(anyhow!("Error reading buffer {err}")))
           }
         },
         _ = tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)) => {
           if state.is_body() {
             break Ok(state.into_parser_result(taken)?);
           }
-          break Err(anyhow!("Connection timeout"))
+          break Err(HandleRequestError::Invalid(anyhow!("Connection timeout")))
         }
       };
 
       let buf_len = taken.len();
 
       if read == 0 && !state.is_body() {
-        break Err(anyhow!("Read 0 {state:?}"));
+        break Err(HandleRequestError::EOF);
       } else if read == 0 && state.is_body() {
         break Ok(state.into_parser_result(taken)?);
       } else if buf_len == 0 && read == 0 {
-        break Err(anyhow!("No new Reads"));
+        break Err(HandleRequestError::Invalid(anyhow!("No new Reads")));
       } else if buf_len == 0 {
         continue;
       }
@@ -70,7 +86,7 @@ where
       let (new_buf, new_state) = match RequestParser::parse_request(taken, state) {
         ParserStatus::Incomplete(state) => state,
         ParserStatus::Success(parser) => break Ok(parser),
-        ParserStatus::Invalid(reason) => break Err(anyhow!(reason)),
+        ParserStatus::Invalid(reason) => break Err(HandleRequestError::Invalid(anyhow!(reason))),
       };
 
       match new_state {
@@ -80,7 +96,7 @@ where
         | ParserState::Body { read_until, .. } => {
           if prev_until != 0 && prev_until == read_until {
             error!("Parser returned incomplete twice at : {read_until} | iter : {iter}");
-            break Err(anyhow!("Incomplete Twice"));
+            break Err(HandleRequestError::Invalid(anyhow!("Incomplete Twice")));
           }
         }
       };

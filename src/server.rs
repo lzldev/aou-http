@@ -247,8 +247,16 @@ where
   loop {
     let mut req = match request::handle_request(&mut stream).await {
       Ok(req) => req,
-      Err(err) => {
-        error!("Error Handling Request {err}");
+      Err(request::HandleRequestError::EOF) => {
+        info!("EOF");
+        return Err(anyhow!("EOF"));
+      }
+      Err(request::HandleRequestError::Timeout) => {
+        info!("Connection Timeout");
+        return Err(anyhow!("Timeout"));
+      }
+      Err(request::HandleRequestError::Invalid(err)) => {
+        error!("Invalid Request {err}");
         return Err(err);
       }
     };
