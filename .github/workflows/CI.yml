@@ -30,11 +30,11 @@ jobs:
             target: x86_64-pc-windows-msvc
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
+            docker: ghcr.io/lzldev/debian-aou:latest
             build: yarn build --target x86_64-unknown-linux-gnu && yarn run types:extend
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            docker: ghcr.io/lzldev/alpine-aou:latest
             build: yarn build --target x86_64-unknown-linux-musl && yarn run types:extend
           - host: macos-latest
             target: x86_64-apple-darwin
