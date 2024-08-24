@@ -1,4 +1,5 @@
 import { AouError, AouServer, AouMiddleware } from "../index.js";
+import { readFile } from "node:fs/promises";
 
 const server = new AouServer();
 
@@ -15,8 +16,17 @@ const html = (args) => `
 
 const messages = ["Hello World", "How's the Weather?", "yippieeeeeee"];
 
+const image = await readFile("./fixtures/image.png");
+server.get("/image", async (req) => {
+  return {
+    headers: {
+      "Content-Type": "image/png",
+    },
+    body: image,
+  };
+});
+
 server.get("/", async (req) => {
-  console.log(req.headers);
   return {
     headers: {
       "Set-Cookie": `invalid=12314124\;asdfasdfasdf\ \!!!!`,
@@ -46,9 +56,6 @@ server.get("/error", async (req) => {
 
 server.get("/json", async (req) => {
   return {
-    headers: {
-      "Content-type": "application/json",
-    },
     body: {
       classic: true,
     },

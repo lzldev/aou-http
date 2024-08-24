@@ -11,14 +11,18 @@ use napi::threadsafe_function::ErrorStrategy;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi::JsFunction;
 use napi_derive::napi;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tracing::debug;
 use tracing::error;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use crate::error::AouError;
-use crate::methods::HttpMethod;
+use crate::request::Connection;
+use crate::request::HttpMethod;
 use crate::request::{self, Request};
 use crate::response::Response;
 use crate::route::Route;
@@ -29,6 +33,12 @@ pub struct AouInstance {
   pub port: u32,
   _options: AouOptions,
   _router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
+}
+
+#[napi(object)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AouOptions {
+  pub tracing: Option<bool>,
 }
 
 #[napi]
@@ -60,10 +70,10 @@ impl AouServer {
       .finish();
 
     tracing::subscriber::set_global_default(subscriber)
-      .unwrap_or_else(|_| error!("Tried to register tracing subscriber twice"));
+      .unwrap_or_else(|err| error!("Tried to register tracing subscriber twice {err}"));
 
-    let handlers = Arc::new(self.router.clone());
-    let handlers_cpy = handlers.clone();
+    let router = Arc::new(self.router.clone());
+    let router2 = router.clone();
 
     let addr = format!("{host}:{port}")
       .parse::<SocketAddrV4>()
@@ -74,100 +84,20 @@ impl AouServer {
       .expect("Couldn't establish tcp connection");
 
     tokio::spawn(async move {
-      let handlers = handlers;
+      let router = router;
 
       loop {
-        let (mut stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
-        let handlers = handlers.clone();
+        let (stream, mut _addr) = listener.accept().await.expect("Failed to accept socket");
+        let router = router.clone();
 
-        tokio::spawn(async move {
-          let mut req = match request::handle_request(&mut stream).await {
-            Ok(req) => req,
-            Err(err) => {
-              error!("Error Handling Request {err}");
-              return Err(err);
-            }
-          };
-
-          let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
-                                                                                          //
-          let path = req.path().to_owned();
-          let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
-
-          let (route, handler) = match AouServer::match_route(handlers.as_ref(), path, method) {
-            Some(_match) => _match,
-            None => {
-              debug!("Route not found {path}");
-              let res = Response {
-                status: Some(404),
-                ..Default::default()
-              };
-
-              res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
-              stream.flush().await?;
-
-              return Err(anyhow!("Route Not Found"));
-            }
-          };
-
-          req.params = route
-            .params
-            .iter()
-            .map(|(k, v)| (k.to_owned(), v.to_owned()))
-            .collect();
-
-          let r = handler.call_async::<Promise<Response>>(req).await?;
-
-          let res: Response = match r.await {
-            Ok(r) => r,
-            Err(err) => {
-              let err: napi::Error = err;
-
-              let is_aou_error = err
-                .reason
-                .starts_with("AouError: ")
-                .then(|| &err.reason[10..]);
-
-              match is_aou_error {
-                Some(reason) => {
-                  debug!("AouMessage: {reason}");
-                  let err = serde_json::from_str::<AouError>(reason).unwrap();
-                  error!("AouError: {err:?}");
-
-                  <AouError as Into<Response>>::into(err)
-                    .write_to_stream(&mut stream, &HashMap::new())
-                    .await?;
-                }
-                None => {
-                  //TODO: Return Error on request based on config.
-                  error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
-                  Response {
-                    status: Some(500),
-                    body: serde_json::Value::String(err.reason),
-                    status_message: None,
-                    headers: None,
-                  }
-                  .write_to_stream(&mut stream, &HashMap::new())
-                  .await?;
-                }
-              };
-
-              return Err(anyhow!("505"));
-            }
-          };
-
-          res.write_to_stream(&mut stream, &HashMap::new()).await?;
-          stream.flush().await?;
-
-          Ok::<(), anyhow::Error>(())
-        });
+        tokio::spawn(async move { handle_connection(stream, router).await });
       }
     });
 
     AouInstance {
       ip: addr.ip().to_string(),
       port: addr.port() as u32,
-      _router: handlers_cpy,
+      _router: router2,
       _options: self.options,
     }
   }
@@ -302,8 +232,108 @@ impl AouServer {
   }
 }
 
-#[napi(object)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct AouOptions {
-  pub tracing: Option<bool>,
+pub async fn handle_connection<TStream>(
+  mut stream: TStream,
+  router: Arc<matchit::Router<Route<ThreadsafeFunction<Request, ErrorStrategy::Fatal>>>>,
+) -> anyhow::Result<()>
+where
+  TStream: AsyncRead + AsyncWrite + Unpin,
+{
+  loop {
+    let mut req = match request::handle_request(&mut stream).await {
+      Ok(req) => req,
+      Err(request::HandleRequestError::EOF) => {
+        info!("EOF");
+        return Err(anyhow!("EOF"));
+      }
+      Err(request::HandleRequestError::Timeout) => {
+        info!("Connection Timeout");
+        return Err(anyhow!("Timeout"));
+      }
+      Err(request::HandleRequestError::Invalid(err)) => {
+        error!("Invalid Request {err}");
+        return Err(err);
+      }
+    };
+
+    let should_close = req.get_connection() == &Connection::Close;
+    let method = HttpMethod::from_str(req.method()).expect("Method not supported"); // TODO : Return actual method not allowed response
+                                                                                    //
+    let path = req.path().to_owned();
+    let (path, _query) = path.split_once('?').unwrap_or((&path, ""));
+
+    info!("{method} {path}");
+
+    let (route, handler) = match AouServer::match_route(router.as_ref(), path, method) {
+      Some(_match) => _match,
+      None => {
+        debug!("Route not found {path}");
+        let res = Response {
+          status: Some(404),
+          ..Default::default()
+        };
+
+        res.write_to_stream(&mut stream, &HashMap::new()).await?; //TODO: static headers.
+        stream.flush().await?;
+
+        return Err(anyhow!("Route Not Found"));
+      }
+    };
+
+    req.params = route
+      .params
+      .iter()
+      .map(|(k, v)| (k.to_owned(), v.to_owned()))
+      .collect();
+
+    let r = handler.call_async::<Promise<Response>>(req).await?;
+
+    let res: Response = match r.await {
+      Ok(r) => r,
+      Err(err) => {
+        let err: napi::Error = err;
+
+        let is_aou_error = err
+          .reason
+          .starts_with("AouError: ")
+          .then(|| &err.reason[10..]);
+
+        match is_aou_error {
+          Some(reason) => {
+            debug!("AouMessage: {reason}");
+            let err = serde_json::from_str::<AouError>(reason).unwrap();
+            error!("AouError: {err:?}");
+
+            <AouError as Into<Response>>::into(err)
+              .write_to_stream(&mut stream, &HashMap::new())
+              .await?;
+          }
+          None => {
+            //TODO: Return Error on request based on config.
+            error!("Unknown Error: {err:?} {}", any::type_name_of_val(&err));
+            Response {
+              status: Some(500),
+              body: serde_json::Value::String(err.reason),
+              ..Default::default()
+            }
+            .write_to_stream(&mut stream, &HashMap::new())
+            .await?;
+          }
+        };
+
+        return Err(anyhow!("505"));
+      }
+    };
+
+    res.write_to_stream(&mut stream, &HashMap::new()).await?;
+
+    stream.flush().await?;
+
+    if should_close {
+      debug!("Closing Connection");
+      break;
+    }
+  }
+  debug!("Closing connection");
+  Ok::<(), anyhow::Error>(())
 }

@@ -1,8 +1,9 @@
+#![feature(iter_advance_by)]
 #[macro_use]
 extern crate napi_derive;
 
+pub mod constants;
 pub mod error;
-pub mod methods;
 pub mod request;
 pub mod response;
 pub mod route;

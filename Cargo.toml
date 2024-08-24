@@ -6,20 +6,26 @@ version = "0.1.0"
 [lib]
 crate-type = ["cdylib"]
 
+
+[build]
+rustflags = ["--cfg", "tokio_unstable"]
+
 # [[bin]]
 # name = "native"
 # path = "src/native.rs"
 
 [dependencies]
 anyhow = "1.0.82"
-# Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "2.12.2", default-features = false, features = [
-    "napi4",
+napi = { default-features = false, features = [
+    "full",
+    "napi9",
+    "napi6",
     "tokio_rt",
     "serde-json",
+    "error_anyhow",
     "anyhow",
-] }
-napi-derive = "2.12.2"
+], git = "https://github.com/lzldev/napi-rs", branch = "feat-serde-value-either" } # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
+napi-derive = "2.16.10"
 serde = { version = "1.0.199", features = ["derive"] }
 serde_json = { version = "1.0.116" }
 
@@ -37,9 +43,10 @@ tokio = { version = "1.37.0", features = [
 ] }
 bytes = "1.6.0"
 matchit = "0.8.4"
+thiserror = "1.0.63"
 
 [build-dependencies]
-napi-build = "2.0.1"
+napi-build = "2.1.3"
 
 [dev-dependencies]
 tokio = { version = "1.37.0", features = ['full', 'test-util'] }

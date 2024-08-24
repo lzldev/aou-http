@@ -1,16 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
-use tokio::{io::AsyncWriteExt, net::TcpStream};
+use napi::bindgen_prelude::Buffer;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 #[napi(object, js_name = "AouResponse")]
-#[derive(Debug)]
 pub struct Response {
   pub status: Option<u32>,
   #[napi(ts_type = "Record<string,string>")]
   pub status_message: Option<String>,
   pub headers: Option<HashMap<String, String>>,
+  #[napi(ts_type = "any | null")]
   pub body: serde_json::Value,
+  pub buffer: Option<Buffer>,
 }
+
+unsafe impl Sync for Response {}
+unsafe impl Send for Response {}
 
 impl Default for Response {
   fn default() -> Self {
@@ -18,17 +23,21 @@ impl Default for Response {
       status: None,
       status_message: None,
       headers: Default::default(),
-      body: Default::default(),
+      body: serde_json::Value::Null,
+      buffer: None,
     }
   }
 }
 
 impl Response {
-  pub async fn write_to_stream(
+  pub async fn write_to_stream<TStream>(
     &self,
-    stream: &mut TcpStream,
+    stream: &mut TStream,
     static_headers: &HashMap<String, String>,
-  ) -> Result<(), anyhow::Error> {
+  ) -> anyhow::Result<()>
+  where
+    TStream: AsyncRead + AsyncWrite + Unpin,
+  {
     let status = self.status.unwrap_or(200);
     let status_message = self
       .status_message
@@ -40,23 +49,32 @@ impl Response {
     let empty_headers = HashMap::<String, String>::with_capacity(0); // TODO: move to static
     let headers = self.headers.as_ref().unwrap_or(&empty_headers);
 
-    let body_buf = Self::body_buf(&self.body);
-    let headers_buf = Self::headers_buf(body_buf.len(), static_headers, headers);
+    if self.buffer.is_some() {
+      let buf: &[u8] = self.buffer.as_ref().unwrap();
+      let content_length = buf.len();
 
-    stream
-      .write_all(
-        format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n{body_buf}").as_bytes(),
-      )
-      .await?;
+      let headers_buf = Self::headers_buf(content_length, static_headers, headers);
+      stream
+        .write_all(format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n",).as_bytes())
+        .await?;
+
+      stream.write_all(buf).await?;
+    } else {
+      let body_buf = match &self.body {
+        serde_json::Value::String(str) => str.to_owned(),
+        _ => (&self).body.to_string(),
+      };
+      let content_length = body_buf.len();
+      let headers_buf = Self::headers_buf(content_length, static_headers, headers);
+
+      stream
+        .write_all(
+          format!("HTTP/1.1 {status} {status_message}\r\n{headers_buf}\r\n{body_buf}",).as_bytes(),
+        )
+        .await?;
+    }
 
     Ok(())
-  }
-
-  fn body_buf(value: &serde_json::Value) -> String {
-    match value {
-      serde_json::Value::String(str) => str.to_owned(),
-      _ => value.to_string(),
-    }
   }
 
   fn headers_buf(

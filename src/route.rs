@@ -1,4 +1,4 @@
-use crate::methods::HttpMethod;
+use crate::request::HttpMethod;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Copy)]

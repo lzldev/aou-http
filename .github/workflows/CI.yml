@@ -30,11 +30,11 @@ jobs:
             target: x86_64-pc-windows-msvc
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
+            docker: lzldev/aou-debian:latest
             build: yarn build --target x86_64-unknown-linux-gnu && yarn run types:extend
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+            docker: lzldev/aou-alpine:latest
             build: yarn build --target x86_64-unknown-linux-musl && yarn run types:extend
           - host: macos-latest
             target: x86_64-apple-darwin
@@ -53,10 +53,10 @@ jobs:
           node-version: 20
           cache: yarn
       - name: Install
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
         if: ${{ !matrix.settings.docker }}
         with:
-          toolchain: stable
+          toolchain: nightly
           targets: ${{ matrix.settings.target }}
       - name: Cache cargo
         uses: actions/cache@v4
