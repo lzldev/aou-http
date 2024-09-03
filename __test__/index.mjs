@@ -26,6 +26,16 @@ server.get("/image", async (req) => {
   };
 });
 
+server.get("/image/{alsdkfjasdlkf}", async (req) => {
+  req.params.alsdkfjasdlkf;
+  return {
+    headers: {
+      "Content-Type": "image/png",
+    },
+    body: image,
+  };
+});
+
 server.get("/", async (req) => {
   return {
     headers: {
@@ -90,6 +100,12 @@ const chain = AouMiddleware.create(async (req, context) => {
   return {
     req,
     context: { ...context, name: "123" },
+  };
+});
+
+chain.handle(async (req, context) => {
+  return {
+    body: "",
   };
 });
 

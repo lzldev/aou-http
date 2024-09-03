@@ -2,6 +2,14 @@
 
 `aou-http` is a Node.js http server written in Rust, made possible by FFI bindings
 
+Currently only available on the following platforms:
+
+- Windows
+- Linux Musl
+- Linux GNU
+- MacOS ARM64
+- MacOS x64
+
 ## Getting Started
 
 ```bash
@@ -12,7 +20,7 @@ yarn add @aou-http/server
 pnpm add @aou-http/server
 ```
 
-### Minimal Example
+## Minimal Example
 
 ```javascript
 import { AouServer } from "@aou-http/server";
@@ -35,3 +43,58 @@ const { ip, port } = await server.listen("0.0.0.0", 7070);
 
 console.info(`Server Running on ${ip}:${port}`);
 ```
+
+## Throwing HTTP Errors
+
+To throw errors directed towards the client, use the `AouError` class.
+Every other error is considered a server error and will be handled by the server.
+
+```javascript
+server.get("/", async (req) => {
+  throw new AouError({
+    status: 404,
+    body: {
+      message: "Not Found",
+    },
+  });
+});
+```
+
+### Middleware
+
+```javascript
+// First start building middleware functions
+const firstMiddleware = new AouMiddleware(async (req, context) => {
+  return {
+    req,
+    context: { ...context, name: "123" },
+  };
+});
+//those can be chained together
+const secondMiddleware = firstMiddleware.with(async (req, context) => {
+  return {
+    req,
+    context: { ...context, id: 1 },
+  };
+});
+
+//When you are ready to create a handler do
+
+server.get(
+  "/route",
+  secondMiddleware.handle(async (req, context) => {
+    /*
+    The type of context here will be 
+    {
+      id:number,
+      name:string
+    }
+  */
+    return {
+      body: context,
+    };
+  })
+);
+```
+
+- Middlewares can also throw errors at any point in the chain

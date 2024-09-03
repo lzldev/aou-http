@@ -146,7 +146,7 @@ impl Response {
       410 => Some("Gone"),
       411 => Some("Length Required"),
       412 => Some("Precondition Failed"),
-      413 => Some("Content Too Large"),
+      413 => Some("Payload Too Large"),
       414 => Some("URI Too Long"),
       415 => Some("Unsupported Media Type"),
       416 => Some("Range Not Satisfiable"),
