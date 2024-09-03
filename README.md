@@ -44,6 +44,35 @@ const { ip, port } = await server.listen("0.0.0.0", 7070);
 console.info(`Server Running on ${ip}:${port}`);
 ```
 
+## Routing
+
+Dynamic routes can be defined by using `{}` inside of the route string.
+
+- `/resource/{id}`
+- `/resource/{name}/{id}`
+
+Catch all Routes:
+
+- `resource/{*id}`
+
+`Request.params` will be infered from the route string.
+
+Example:\
+Route String: `/resource/{id}/sub-resource/{subId}`
+Will generate a Params record of type:
+
+```typescript
+{
+  id: string;
+  subId: string;
+}
+```
+
+### Methods:
+
+A Catch all route method can be added using the: `server.all()` method.
+Methods with more specificity will take precedence over routes with less specificity.
+
 ## Throwing HTTP Errors
 
 To throw errors directed towards the client, use the `AouError` class.
